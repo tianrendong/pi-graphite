@@ -1,20 +1,31 @@
 {
   "name": "pi-graphite",
-  "version": "0.0.1",
-  "description": "Reserved package name for pi-graphite.",
-  "main": "index.js",
+  "version": "0.2.1",
+  "description": "Structured pi tools for the Graphite (gt) CLI.",
+  "keywords": [
+    "pi",
+    "pi-package",
+    "graphite",
+    "gt",
+    "stacked-prs"
+  ],
+  "license": "MIT",
   "files": [
-    "index.js",
+    "src",
     "README.md",
     "LICENSE"
   ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
   "scripts": {
     "test": "node -e \"console.log('no tests')\""
-  },
-  "keywords": [
-    "pi",
-    "graphite"
-  ],
-  "author": "",
-  "license": "MIT"
+  }
 }
