@@ -1,6 +1,6 @@
 {
   "name": "pi-graphite",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Structured pi tools for the Graphite (gt) CLI.",
   "keywords": [
     "pi",
