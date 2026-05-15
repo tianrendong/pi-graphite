@@ -1,0 +1,20 @@
+{
+  "name": "pi-graphite",
+  "version": "0.0.1",
+  "description": "Reserved package name for pi-graphite.",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node -e \"console.log('no tests')\""
+  },
+  "keywords": [
+    "pi",
+    "graphite"
+  ],
+  "author": "",
+  "license": "MIT"
+}
