@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { shellJoin } from "../lib/argv";
 import { runGt } from "../lib/exec";
 import { ensureSuccess, renderText } from "../lib/result";
 import {
@@ -67,7 +68,7 @@ export function registerSync(pi: ExtensionAPI) {
       if (p.force) args.push("--force");
       if (p.restack === false) args.push("--no-restack");
 
-      const label = `gt ${args.join(" ")}`;
+      const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd);
       return {

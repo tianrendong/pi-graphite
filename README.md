@@ -79,6 +79,9 @@ dependent branches.
 - Editor / pager / browser env is forced safe (`GT_EDITOR=true`, `GT_PAGER=`,
   `BROWSER=true`, …). Commands have a hard timeout.
 - Interactive editor / hunk / browser / reorder paths are not exposed.
+- Rendered `$ gt …` command lines in tool output are POSIX shell-quoted so
+  copy-paste cannot trigger command substitution or word-splitting from
+  user-controlled args.
 - `graphite_setup action=track_branch` requires explicit `branch`, explicit
   `parent`, and `confirmParent:true`; do not guess parent if unclear.
 - `graphite_setup action=init_repo reset:true` needs `confirmDestructive:true`.
@@ -93,6 +96,14 @@ dependent branches.
   (`notInitialized`, `conflictHalted`, `restackNeeded`, `trunkOutOfSync`,
   `branchNotTracked`, `noChangesStaged`, `checkedOutElsewhere`,
   `operatingOnTrunk`, …).
+
+### Known surface: git hooks
+
+This extension does not pass `--no-verify` to `gt` / `git`. Any
+`pre-commit`, `commit-msg`, `pre-push`, or related hook configured in the
+target repo will execute as part of mutating operations (create, amend,
+submit, …). Hooks are arbitrary user code and are intentionally not
+bypassed; treat hook content as part of the repo's trust boundary.
 
 ## License
 

@@ -57,3 +57,25 @@ export function flagEq(flag: string, value: string | number): string {
   }
   return `${flag}=${value}`;
 }
+
+/**
+ * POSIX shell single-quote a value so the rendered command line is safe to
+ * copy-paste into a shell. argv execution itself never goes through a shell
+ * (we use spawn with an argv array), but rendered commands appear in tool
+ * output and labels; a user pasting them must not trigger command
+ * substitution, word splitting, or metacharacter interpretation.
+ *
+ * Rule: wrap in single quotes, and replace each embedded single quote with
+ * the POSIX-portable sequence '\''. Tokens consisting solely of
+ * [A-Za-z0-9_=:,.@/+-] are left unquoted for readability.
+ */
+export function shellQuote(arg: string): string {
+  if (arg.length === 0) return "''";
+  if (/^[A-Za-z0-9_=:,.@\/+\-]+$/.test(arg)) return arg;
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/** Join argv tokens into a shell-safe single line. */
+export function shellJoin(args: readonly string[]): string {
+  return args.map(shellQuote).join(" ");
+}

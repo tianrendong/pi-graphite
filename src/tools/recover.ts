@@ -7,6 +7,7 @@ import {
   runGt,
   safeNoninteractiveEnv,
 } from "../lib/exec";
+import { shellJoin } from "../lib/argv";
 import { ensureSuccess, renderText } from "../lib/result";
 import { CwdParam, StringEnum, Type, type ToolReturn } from "../lib/schema";
 
@@ -135,7 +136,7 @@ export function registerRecover(pi: ExtensionAPI) {
           if (p.force) args.push("--force");
           break;
       }
-      const label = `gt ${args.join(" ")}`;
+      const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd);
       return {

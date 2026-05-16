@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
-import { assertSafeRef, flagEq } from "../lib/argv";
+import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
 import { ensureSuccess, renderText } from "../lib/result";
 import {
   CwdParam,
@@ -104,18 +104,30 @@ export function registerSubmitStack(pi: ExtensionAPI) {
       if (p.mergeWhenReady) args.push("--merge-when-ready");
       if (p.rerequestReview) args.push("--rerequest-review");
 
+      const assertReviewer = (rv: string, label: string) => {
+        assertSafeRef(rv, label);
+        // gt joins reviewers on ',' before calling gh. Reject any element
+        // that itself contains a comma or whitespace so a single array
+        // entry cannot expand into multiple reviewers.
+        if (/[,\s]/.test(rv)) {
+          throw new Error(
+            `${label} must not contain commas or whitespace (got ${JSON.stringify(rv)}). ` +
+              `Pass each reviewer as a separate array element.`,
+          );
+        }
+      };
       if (p.reviewers && p.reviewers.length) {
-        for (const rv of p.reviewers) assertSafeRef(rv, "reviewers[]");
+        for (const rv of p.reviewers) assertReviewer(rv, "reviewers[]");
         args.push(flagEq("--reviewers", p.reviewers.join(",")));
       }
       if (p.teamReviewers && p.teamReviewers.length) {
-        for (const rv of p.teamReviewers) assertSafeRef(rv, "teamReviewers[]");
+        for (const rv of p.teamReviewers) assertReviewer(rv, "teamReviewers[]");
         args.push(flagEq("--team-reviewers", p.teamReviewers.join(",")));
       }
       if (p.forcePush) args.push("--force");
       if (p.ignoreOutOfSyncTrunk) args.push("--ignore-out-of-sync-trunk");
 
-      const label = `gt ${args.join(" ")}`;
+      const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd);
       return {

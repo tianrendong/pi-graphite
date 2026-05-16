@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { DEFAULT_COMMAND_TIMEOUT_MS, killProcessGroup, safeNoninteractiveEnv, type GtRunResult } from "./exec";
+import { shellJoin } from "./argv";
+import { DEFAULT_COMMAND_TIMEOUT_MS, killProcessGroup, runGt, safeNoninteractiveEnv, type GtRunResult } from "./exec";
 
 /**
  * Structured failure hints. Only populated when the underlying `gt` command
@@ -108,7 +109,7 @@ export function formatResult(r: GtRunResult): FormattedResult {
 export function renderText(label: string, f: FormattedResult): string {
   const r = f.result;
   const lines: string[] = [];
-  lines.push(`$ gt ${r.args.join(" ")}`);
+  lines.push(`$ gt ${shellJoin(r.args)}`);
   lines.push(
     `# cwd=${r.cwd}  exit=${r.exitCode}${r.timedOut ? "  (aborted)" : ""}${
       r.spawnError ? `  (spawn-error: ${r.spawnError})` : ""
@@ -176,7 +177,11 @@ async function detectCurrentBranch(cwd: string): Promise<string | undefined> {
 }
 
 async function detectTrunk(cwd: string): Promise<string | undefined> {
-  const out = await execText("gt", ["--cwd", cwd, "--no-interactive", "trunk"], cwd);
+  // Route through the hardened runner so cwd resolve, forbidden-token scan,
+  // trailing --no-interactive injection, and env scrubbing all apply.
+  const r = await runGt(["trunk"], { cwd }).catch(() => undefined);
+  if (!r || r.exitCode !== 0) return undefined;
+  const out = r.stdout;
   // gt trunk prints the trunk name on its own line. Take last non-empty line.
   const cleaned = out
     .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")

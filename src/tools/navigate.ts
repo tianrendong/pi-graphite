@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
-import { assertSafeRef, flagEq } from "../lib/argv";
+import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
 import { ensureSuccess, renderText } from "../lib/result";
 import {
   CwdParam,
@@ -87,7 +87,7 @@ export function registerNavigate(pi: ExtensionAPI) {
           args = ["bottom"];
           break;
       }
-      const label = `gt ${args.join(" ")}`;
+      const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd);
       return {

@@ -1,6 +1,6 @@
 {
   "name": "pi-graphite",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Opinionated pi tools + skill for stacked PR workflows with the Graphite (gt) CLI.",
   "keywords": [
     "pi",
