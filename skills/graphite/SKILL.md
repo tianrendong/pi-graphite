@@ -24,9 +24,11 @@ Do not use it for:
 
 - editing PR titles / bodies / labels / reviewers metadata (use `gh` directly)
 - reading PR review comments or CI status (use `gh` directly)
-- rewriting history beyond create/amend (split/fold/move/squash) — use the
-  raw `gt` CLI via bash if the user explicitly asks; the extension does not
-  expose stack surgery
+- rewriting history beyond create/amend (split / fold / move / squash /
+  reorder). The extension does not expose stack surgery. Do not invoke
+  `gt` directly from bash for these — those subcommands prompt
+  interactively (base selectors, hunk pickers, editors) and will hang.
+  Ask the user to run them manually in their own terminal.
 
 ## Tools
 
@@ -180,7 +182,11 @@ If `gt sync` halts on conflict, use the conflict recipe below.
 
 1. Read the failing tool's `--- stderr ---` and `hints` block.
 2. Resolve markers in the listed files.
-3. `git add <files>` from bash.
+3. Stage the resolved files from bash. Always use `git add --` followed
+   by the file paths so a path that starts with `-` cannot be parsed as a
+   git flag (e.g. `git add -- path/with-dash`). Use `git add -A` only if
+   the user explicitly wants to stage everything. Never run
+   `git add --interactive` or `git add -p`.
 4. `graphite_recover({ cwd, action: "continue" })`.
 5. If you want to bail entirely: `graphite_recover({ cwd, action: "abort" })`.
 
@@ -193,9 +199,11 @@ graphite_recover({ cwd, action: "undo" })
 ## Rules
 
 - **Submit stacks, not branches.** `graphite_submit_stack` always passes
-  `--stack`. Do not look for a single-branch submit; if the user truly wants
-  to push only one branch, use `gt submit --branch=<name>` via bash and
-  explain why.
+  `--stack`. There is no safe single-branch submit path in this extension.
+  If the user truly needs to push only one branch, ask them to run
+  `gt submit --branch=<name>` themselves in their own terminal — do not
+  invoke it from bash, because `gt submit` defaults to interactive prompts
+  and an editor for PR metadata.
 - **Use `graphite_setup` only for preconditions.** Initialize missing repos
   or track existing Git branches. Do not use it for daily branch creation;
   use `graphite_change action="create"` instead.
@@ -212,7 +220,9 @@ graphite_recover({ cwd, action: "undo" })
 - **Never use `git rebase --continue` after a gt command.** Use
   `graphite_recover action="continue"`.
 - **This extension wraps gt only.** For PR body/title edits, review
-  comments, check runs, etc., shell out to `gh` directly in bash — do not
-  expect a tool from this extension.
+  comments, check runs, etc., use a dedicated `gh` tool/extension if
+  available. If you must shell out to `gh` from bash, pass fully explicit
+  non-interactive arguments only — never `gh auth login`, `--web`, or any
+  command that opens a browser, editor, or prompt.
 - **No interactive editor / browser / hunk picker.** All paths are
   non-interactive; pass explicit messages.
