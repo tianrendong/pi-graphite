@@ -1,5 +1,7 @@
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { runGt } from "../lib/exec";
+import { DEFAULT_COMMAND_TIMEOUT_MS, killProcessGroup, runGt, safeNoninteractiveEnv } from "../lib/exec";
 import { ensureSuccess, renderText } from "../lib/result";
 import {
   CwdParam,
@@ -15,6 +17,72 @@ function shellQuote(s: string): string {
   if (s === "") return "''";
   if (/^[A-Za-z0-9_./:@%+=-]+$/.test(s)) return s;
   return `'${s.replace(/'/g, `'"'"'`)}'`;
+}
+
+interface CmdResult {
+  command: string;
+  args: string[];
+  cwd: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  spawnError?: string;
+}
+
+function runGh(args: string[], cwd: string, signal?: AbortSignal): Promise<CmdResult> {
+  return new Promise((resolve) => {
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      child = spawn("gh", args, {
+        cwd,
+        env: safeNoninteractiveEnv(),
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      });
+    } catch (e) {
+      resolve({ command: "gh", args, cwd, exitCode: -1, stdout: "", stderr: "", timedOut: false, spawnError: (e as Error).message });
+      return;
+    }
+
+    let stdout = "";
+    let stderr = "";
+    let killed = false;
+    let settled = false;
+    const killChild = () => {
+      killed = true;
+      killProcessGroup(child, "SIGTERM");
+      setTimeout(() => killProcessGroup(child, "SIGKILL"), 1500).unref?.();
+    };
+    const timeout = setTimeout(killChild, DEFAULT_COMMAND_TIMEOUT_MS);
+    timeout.unref?.();
+    const onAbort = killChild;
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("error", (e) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      resolve({ command: "gh", args, cwd, exitCode: -1, stdout, stderr, timedOut: killed, spawnError: e.message });
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      resolve({ command: "gh", args, cwd, exitCode: code ?? -1, stdout, stderr, timedOut: killed });
+    });
+  });
+}
+
+function renderGhText(label: string, r: CmdResult): string {
+  const lines = [`[${label}] fail`, `$ gh ${r.args.join(" ")}`, `# cwd=${r.cwd}  exit=${r.exitCode}${r.timedOut ? "  (aborted)" : ""}${r.spawnError ? `  (spawn-error: ${r.spawnError})` : ""}`];
+  if (r.stdout.trim()) lines.push("--- stdout ---", r.stdout.trimEnd());
+  if (r.stderr.trim()) lines.push("--- stderr ---", r.stderr.trimEnd());
+  return lines.join("\n");
 }
 
 export function registerPrSubmit(pi: ExtensionAPI) {
@@ -39,7 +107,7 @@ export function registerPrSubmit(pi: ExtensionAPI) {
       stack: Type.Optional(
         Type.Boolean({
           description:
-            "true => --stack (include descendants). false => --no-stack. Omitted => default (gt prompts based on config).",
+            "true => --stack (include descendants). false => --no-stack. Omitted => gt default behavior.",
         }),
       ),
       branch: Type.Optional(Type.String({ description: "Run from this branch (--branch)." })),
@@ -53,9 +121,9 @@ export function registerPrSubmit(pi: ExtensionAPI) {
       comment: Type.Optional(Type.String({ description: "--comment <msg>" })),
       targetTrunk: Type.Optional(Type.String()),
       editMode: Type.Optional(
-        StringEnum(["none", "cli", "web"] as const, {
+        StringEnum(["none", "cli"] as const, {
           description:
-            "none (default) => --no-edit; cli => --edit --cli; web => --web. Affects PR metadata prompting.",
+            "none (default) => --no-edit; cli => --edit --cli. Browser/web edit mode is disabled.",
         }),
       ),
       ai: Type.Optional(
@@ -67,7 +135,7 @@ export function registerPrSubmit(pi: ExtensionAPI) {
         Type.Boolean({ description: "--force (instead of default --force-with-lease). Requires confirmRemote." }),
       ),
       ignoreOutOfSyncTrunk: Type.Optional(Type.Boolean()),
-      view: Type.Optional(Type.Boolean({ description: "--view (open PR in browser after submit)." })),
+      view: Type.Optional(Type.Boolean({ description: "Rejected: browser viewing is disabled." })),
       confirmRemote: Type.Optional(Type.Boolean()),
 
       title: Type.Optional(
@@ -87,6 +155,8 @@ export function registerPrSubmit(pi: ExtensionAPI) {
       const apply = p.apply === true;
       if (apply) requireConfirm(p.confirmRemote, "gt submit (push branches + create/update PRs)");
       if (p.forcePush) requireConfirm(p.confirmRemote, "gt submit --force");
+      if ((p.editMode as string | undefined) === "web") throw new Error("editMode:'web' is disabled; browser launch is not exposed.");
+      if (p.view) throw new Error("view:true is disabled; browser launch is not exposed. Use graphite_pr_lifecycle action='view_url'.");
 
       const wantsCustomMetadata = p.title != null || p.body != null;
 
@@ -116,13 +186,11 @@ export function registerPrSubmit(pi: ExtensionAPI) {
       const editMode = wantsCustomMetadata ? "none" : (p.editMode ?? "none");
       if (editMode === "none") args.push("--no-edit");
       else if (editMode === "cli") args.push("--edit", "--cli");
-      else if (editMode === "web") args.push("--web");
 
       args.push(p.ai ? "--ai" : "--no-ai");
 
       if (p.forcePush) args.push("--force");
       if (p.ignoreOutOfSyncTrunk) args.push("--ignore-out-of-sync-trunk");
-      if (p.view) args.push("--view");
 
       const label = `gt ${args.join(" ")}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
@@ -175,15 +243,15 @@ export function registerPrLifecycle(pi: ExtensionAPI) {
     name: "graphite_pr_lifecycle",
     label: "Graphite: PR lifecycle",
     description:
-      "PR lifecycle actions: open the PR/stack page in a browser, merge the stack via Graphite, or unlink a branch from its PR.",
+      "PR lifecycle actions: return PR URL, merge the stack via Graphite, or unlink a branch from its PR.",
     promptSnippet:
-      "graphite_pr_lifecycle: open_url | merge | unlink for a PR/branch",
+      "graphite_pr_lifecycle: view_url | merge | unlink for a PR/branch",
     parameters: Type.Object({
       cwd: CwdParam,
-      action: StringEnum(["open_url", "merge", "unlink"] as const),
+      action: StringEnum(["view_url", "merge", "unlink"] as const),
       branch: Type.Optional(Type.String({ description: "Branch name or PR number." })),
       stack: Type.Optional(
-        Type.Boolean({ description: "action=open_url: open stack page (--stack)." }),
+        Type.Boolean({ description: "Rejected: stack browser page is disabled." }),
       ),
       apply: Type.Optional(
         Type.Boolean({
@@ -192,23 +260,28 @@ export function registerPrLifecycle(pi: ExtensionAPI) {
       ),
       confirm: Type.Optional(
         Type.Boolean({
-          description: "action=merge: pass --confirm so gt prompts before merging each branch.",
+          description: "Rejected: interactive confirmation prompts are disabled.",
         }),
       ),
       confirmRemote: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {
       let args: string[];
-      if (p.action === "open_url") {
-        args = ["pr"];
-        if (p.branch) args.push(p.branch);
-        if (p.stack) args.push("--stack");
+      if (p.action === "view_url") {
+        if (p.stack) throw new Error("stack:true is disabled; browser stack page is not exposed.");
+        const branchArgs = p.branch ? [p.branch] : [];
+        const r = await runGh(["pr", "view", ...branchArgs, "--json", "url", "--jq", ".url"], p.cwd, signal);
+        if (r.exitCode !== 0) throw new Error(renderGhText("gh pr view", r));
+        return {
+          content: [{ type: "text", text: r.stdout.trim() }],
+          details: { action: p.action, url: r.stdout.trim(), result: r },
+        };
       } else if (p.action === "merge") {
         const apply = p.apply === true;
         if (apply) requireConfirm(p.confirmRemote, "gt merge (merges PRs on GitHub)");
         args = ["merge"];
         if (!apply) args.push("--dry-run");
-        if (p.confirm) args.push("--confirm");
+        if (p.confirm) throw new Error("confirm:true is disabled; interactive confirmation prompts are not exposed.");
       } else {
         args = ["unlink"];
         if (p.branch) args.push(p.branch);

@@ -13,6 +13,7 @@ import {
   Type,
   requireConfirm,
   stageArgs,
+  type StageModeValue,
   type ToolReturn,
 } from "../lib/schema";
 
@@ -175,7 +176,8 @@ export function registerBranchCreate(pi: ExtensionAPI) {
       const args = ["create"];
       if (p.name) args.push(p.name);
       if (p.message) args.push("--message", p.message);
-      args.push(...stageArgs((p.stage ?? "none") as "none" | "all" | "update" | "patch"));
+      if ((p.stage as string | undefined) === "patch") throw new Error("stage:'patch' is disabled; use stage:'all' or stage:'update'.");
+      args.push(...stageArgs((p.stage ?? "none") as StageModeValue));
       if (p.onto) args.push("--onto", p.onto);
       if (p.insert) args.push("--insert");
       args.push(p.ai ? "--ai" : "--no-ai");
@@ -203,6 +205,7 @@ export function registerBranchUpdate(pi: ExtensionAPI) {
     promptGuidelines: [
       "Use graphite_branch_update with action=absorb (dryRun:true first) to distribute staged hunks across downstack commits.",
       "graphite_branch_update with action=delete and close:true requires confirmRemote.",
+      "Editor and patch/hunk modes are disabled. Pass explicit `message` where needed.",
     ],
     parameters: Type.Object({
       cwd: CwdParam,
@@ -220,7 +223,7 @@ export function registerBranchUpdate(pi: ExtensionAPI) {
       into: Type.Optional(
         Type.String({ description: "action=amend: amend into a downstack branch (`gt modify --into`)." }),
       ),
-      edit: Type.Optional(Type.Boolean({ description: "Open editor for commit message." })),
+      edit: Type.Optional(Type.Boolean({ description: "Rejected: editor mode is disabled for agent safety." })),
       resetAuthor: Type.Optional(Type.Boolean({ description: "action=amend: reset commit author." })),
       newName: Type.Optional(Type.String({ description: "action=rename: new branch name." })),
       branch: Type.Optional(Type.String({ description: "action=delete: branch name to delete." })),
@@ -233,30 +236,32 @@ export function registerBranchUpdate(pi: ExtensionAPI) {
       dryRun: Type.Optional(
         Type.Boolean({ description: "action=absorb: dry-run only (default true)." }),
       ),
-      patch: Type.Optional(Type.Boolean({ description: "action=absorb: pick hunks (--patch)." })),
+      patch: Type.Optional(Type.Boolean({ description: "Rejected: interactive hunk mode is disabled." })),
       confirmRemote: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {
       let args: string[];
+      if (p.edit) throw new Error("edit:true is disabled; pass an explicit message instead.");
+      if (p.patch) throw new Error("patch:true is disabled; interactive hunk selection is not exposed.");
+      if ((p.stage as string | undefined) === "patch") throw new Error("stage:'patch' is disabled; use stage:'all' or stage:'update'.");
 
       switch (p.action) {
         case "amend": {
           args = ["modify"];
-          args.push(...stageArgs((p.stage ?? "none") as "none" | "all" | "update" | "patch"));
+          args.push(...stageArgs((p.stage ?? "none") as StageModeValue));
           if (p.message) args.push("--message", p.message);
-          if (p.edit) args.push("--edit");
+          else args.push("--no-edit");
           if (p.resetAuthor) args.push("--reset-author");
           if (p.into) args.push("--into", p.into);
           break;
         }
         case "new_commit": {
-          if (!p.message && !p.edit) {
-            throw new Error("action=new_commit requires `message` or edit=true.");
+          if (!p.message) {
+            throw new Error("action=new_commit requires `message` (editor mode disabled).");
           }
           args = ["modify", "--commit"];
-          args.push(...stageArgs((p.stage ?? "none") as "none" | "all" | "update" | "patch"));
-          if (p.message) args.push("--message", p.message);
-          if (p.edit) args.push("--edit");
+          args.push(...stageArgs((p.stage ?? "none") as StageModeValue));
+          args.push("--message", p.message);
           break;
         }
         case "absorb": {
@@ -264,15 +269,14 @@ export function registerBranchUpdate(pi: ExtensionAPI) {
           args = ["absorb"];
           if (dryRun) args.push("--dry-run");
           else args.push("--force");
-          const stage = (p.stage ?? "none") as "none" | "all" | "update" | "patch";
+          const stage = (p.stage ?? "none") as StageModeValue;
           if (stage === "all") args.push("--all");
-          if (p.patch) args.push("--patch");
           break;
         }
         case "squash": {
           args = ["squash"];
           if (p.message) args.push("--message", p.message);
-          if (p.edit) args.push("--edit");
+          else args.push("--no-edit");
           break;
         }
         case "pop": {

@@ -5,8 +5,10 @@ import { resolve as resolvePath } from "node:path";
 export interface GtRunOptions {
   cwd: string;
   signal?: AbortSignal;
-  /** Extra env vars merged into process.env */
+  /** Extra env vars merged into process.env. Safety vars always win. */
   env?: Record<string, string>;
+  /** Hard timeout in ms. Default 120s. */
+  timeoutMs?: number;
 }
 
 export interface GtRunResult {
@@ -23,6 +25,43 @@ export interface GtRunResult {
 const ANSI = /\x1b\[[0-9;]*[a-zA-Z]/g;
 const MAX_BYTES = 50 * 1024;
 const MAX_LINES = 2000;
+export const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
+
+/** Env guardrails: disable editors, pagers, browsers. Must override caller env. */
+export const SAFE_NONINTERACTIVE_ENV: Record<string, string> = {
+  GT_EDITOR: "true",
+  TEST_GT_EDITOR: "true",
+  GIT_EDITOR: "true",
+  EDITOR: "true",
+  VISUAL: "true",
+  GIT_SEQUENCE_EDITOR: "true",
+  GT_PAGER: "",
+  GIT_PAGER: "cat",
+  PAGER: "cat",
+  LESS: "FRX",
+  BROWSER: "true",
+  GH_BROWSER: "true",
+};
+
+export function safeNoninteractiveEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...(extra ?? {}),
+    ...SAFE_NONINTERACTIVE_ENV,
+  };
+}
+
+export function killProcessGroup(child: { pid?: number; kill(signal?: NodeJS.Signals): boolean }, signal: NodeJS.Signals): void {
+  try {
+    if (child.pid && process.platform !== "win32") {
+      process.kill(-child.pid, signal);
+      return;
+    }
+  } catch {}
+  try {
+    child.kill(signal);
+  } catch {}
+}
 
 export function stripAnsi(s: string): string {
   return s.replace(ANSI, "");
@@ -68,8 +107,11 @@ export async function runGt(
     try {
       child = spawn("gt", args, {
         cwd,
-        env: { ...process.env, ...(opts.env ?? {}) },
+        // Force any editor/pager/browser invocation to no-op instead of
+        // hanging. Safety vars override opts.env by design.
+        env: safeNoninteractiveEnv(opts.env),
         stdio: ["ignore", "pipe", "pipe"],
+        detached: process.platform !== "win32",
       });
     } catch (e) {
       resolve({
@@ -88,6 +130,16 @@ export async function runGt(
     let stdout = "";
     let stderr = "";
     let killed = false;
+    let settled = false;
+
+    const killChild = () => {
+      killed = true;
+      killProcessGroup(child, "SIGTERM");
+      setTimeout(() => killProcessGroup(child, "SIGKILL"), 1500).unref?.();
+    };
+
+    const timeout = setTimeout(killChild, opts.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS);
+    timeout.unref?.();
 
     child.stdout?.on("data", (d) => {
       stdout += d.toString();
@@ -98,20 +150,14 @@ export async function runGt(
       if (stderr.length > MAX_BYTES * 4) stderr = stderr.slice(-MAX_BYTES * 2);
     });
 
-    const onAbort = () => {
-      killed = true;
-      try {
-        child.kill("SIGTERM");
-        setTimeout(() => {
-          try {
-            child.kill("SIGKILL");
-          } catch {}
-        }, 1500).unref?.();
-      } catch {}
-    };
+    const onAbort = killChild;
     opts.signal?.addEventListener("abort", onAbort, { once: true });
 
     child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      opts.signal?.removeEventListener("abort", onAbort);
       resolve({
         command: "gt",
         args,
@@ -119,12 +165,15 @@ export async function runGt(
         exitCode: -1,
         stdout: sanitizeBranding(stripAnsi(stdout)),
         stderr: sanitizeBranding(stripAnsi(stderr)),
-        timedOut: false,
+        timedOut: killed,
         spawnError: err.message,
       });
     });
 
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       opts.signal?.removeEventListener("abort", onAbort);
       resolve({
         command: "gt",

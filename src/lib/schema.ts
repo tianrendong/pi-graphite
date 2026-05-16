@@ -9,10 +9,11 @@ export const StageMode = StringEnum([
   "none",
   "all",
   "update",
-  "patch",
 ] as const);
 
-export function stageArgs(mode: "none" | "all" | "update" | "patch"): string[] {
+export type StageModeValue = "none" | "all" | "update";
+
+export function stageArgs(mode: StageModeValue): string[] {
   switch (mode) {
     case "none":
       return [];
@@ -20,9 +21,9 @@ export function stageArgs(mode: "none" | "all" | "update" | "patch"): string[] {
       return ["--all"];
     case "update":
       return ["--update"];
-    case "patch":
-      return ["--patch"];
   }
+  const _exhaustive: never = mode;
+  return _exhaustive;
 }
 
 /** Common cwd param. Required so we always pass an absolute path to gt. */

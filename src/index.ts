@@ -5,6 +5,7 @@ import {
   registerStackView,
   registerStackRestack,
   registerStackReorganize,
+  registerStackCompose,
 } from "./tools/stack";
 import {
   registerBranchInspect,
@@ -26,6 +27,7 @@ import { registerRecovery } from "./tools/recovery";
  *   graphite_stack_view
  *   graphite_stack_restack
  *   graphite_stack_reorganize
+ *   graphite_stack_compose
  *   graphite_branch_inspect
  *   graphite_branch_create
  *   graphite_branch_update
@@ -39,6 +41,7 @@ import { registerRecovery } from "./tools/recovery";
  * Conventions:
  * - Every tool requires absolute `cwd`.
  * - `gt` is invoked with --cwd <cwd> --no-interactive by default.
+ * - Editor/pager/browser env is forced safe; interactive hunk/editor/browser paths are rejected.
  * - Remote / destructive operations require explicit `confirmRemote` /
  *   `confirmDestructive` flags. Submit/merge default to dry-run.
  * - Output is ANSI-stripped and truncated to ~50KB / 2000 lines.
@@ -49,6 +52,7 @@ export default function (pi: ExtensionAPI) {
   registerStackView(pi);
   registerStackRestack(pi);
   registerStackReorganize(pi);
+  registerStackCompose(pi);
 
   registerBranchInspect(pi);
   registerBranchCreate(pi);

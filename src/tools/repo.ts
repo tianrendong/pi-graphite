@@ -9,13 +9,13 @@ const params = Type.Object({
   trunk: Type.Optional(
     Type.String({
       description:
-        "Trunk branch name. Required for action=set_trunk. Optional for action=init (otherwise gt prompts).",
+        "Trunk branch name. Required for action=set_trunk. Optional for action=init (gt default behavior).",
     }),
   ),
   addAdditionalTrunk: Type.Optional(
     Type.Boolean({
       description:
-        "If true with action=set_trunk, add an additional trunk via `gt trunk --add` instead of replacing.",
+        "Rejected: `gt trunk --add` is interactive and not exposed to agents.",
     }),
   ),
   reset: Type.Optional(
@@ -30,7 +30,7 @@ export function registerRepo(pi: ExtensionAPI) {
     name: "graphite_repo",
     label: "Graphite: repo",
     description:
-      "Repo-level Graphite operations: status snapshot (log + trunk), init, set/add trunk, and show config.",
+      "Repo-level Graphite operations: status snapshot (log + trunk), init, set trunk, and show config.",
     promptSnippet:
       "graphite_repo: inspect repo state, initialize Graphite, configure trunk(s)",
     parameters: params,
@@ -85,15 +85,7 @@ export function registerRepo(pi: ExtensionAPI) {
             details: { result: f },
           };
         }
-        // `gt trunk --add` is interactive (prompts for the new trunk name).
-        // With --no-interactive this will fail; surface that failure rather
-        // than silently misleading the caller.
-        const r = await runGt(["trunk", "--add"], { cwd, signal });
-        const f = await ensureSuccess("gt trunk --add", r, cwd);
-        return {
-          content: [{ type: "text", text: renderText("gt trunk --add", f) }],
-          details: { result: f },
-        };
+        throw new Error("gt trunk --add is interactive; not exposed to agents.");
       }
 
       // show_config

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { GtRunResult } from "./exec";
+import { DEFAULT_COMMAND_TIMEOUT_MS, killProcessGroup, safeNoninteractiveEnv, type GtRunResult } from "./exec";
 
 /**
  * Structured failure hints. Only populated when the underlying `gt` command
@@ -140,17 +140,33 @@ function execText(cmd: string, args: string[], cwd: string): Promise<string> {
     let out = "";
     let child;
     try {
-      child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "ignore"] });
+      child = spawn(cmd, args, {
+        cwd,
+        env: safeNoninteractiveEnv(),
+        stdio: ["ignore", "pipe", "ignore"],
+        detached: process.platform !== "win32",
+      });
     } catch {
       resolve("");
       return;
     }
+    const timeout = setTimeout(() => {
+      killProcessGroup(child, "SIGTERM");
+      setTimeout(() => killProcessGroup(child, "SIGKILL"), 1500).unref?.();
+    }, DEFAULT_COMMAND_TIMEOUT_MS);
+    timeout.unref?.();
     child.stdout.on("data", (d) => {
       out += d.toString();
       if (out.length > 4096) out = out.slice(-4096);
     });
-    child.on("error", () => resolve(""));
-    child.on("close", () => resolve(out));
+    child.on("error", () => {
+      clearTimeout(timeout);
+      resolve("");
+    });
+    child.on("close", () => {
+      clearTimeout(timeout);
+      resolve(out);
+    });
   });
 }
 
