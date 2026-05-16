@@ -8,9 +8,12 @@ graphite_status → (graphite_setup if needed) → graphite_sync → graphite_na
        → graphite_change → graphite_submit_stack (dry-run) → graphite_submit_stack (apply)
 ```
 
-The extension wraps `gt` only. It deliberately does **not** call `gh`, edit PR
-titles/bodies, fetch review comments, or perform stack surgery
-(split/fold/move/squash). Use the `gt` or `gh` CLI directly for those.
+The extension wraps `gt` only. It deliberately does **not** call `gh`, edit
+PR titles/bodies, fetch review comments, or perform stack surgery (split /
+fold / move / squash / reorder). For those flows, run the underlying `gt`
+or `gh` command yourself in your own terminal; the agent should not invoke
+them from bash, as their defaults open interactive prompts, hunk pickers,
+or editors that will hang non-interactive sessions.
 
 ## Requirements
 
@@ -64,7 +67,7 @@ graphite_submit_stack apply=true confirmRemote=true
 Conflict path:
 
 ```text
-# resolve files, git add them
+# resolve files, then: git add -- <paths>
 graphite_recover action=continue
 ```
 
