@@ -1,11 +1,16 @@
 # pi-graphite
 
-Structured pi tools that wrap the [Graphite](https://graphite.com) `gt` CLI so
-agents (and humans) can drive stacked PR workflows safely from pi.
+Opinionated pi tools + skill that wrap the [Graphite](https://graphite.com)
+`gt` CLI for stacked PR workflows. Seven tools, one correct path.
 
-This package is **Layer A** of the planned design — one tool per Graphite
-domain resource (repo / stack / branch / PR / recovery), not one tool per `gt`
-subcommand and not a workflow orchestrator.
+```
+graphite_status → (graphite_setup if needed) → graphite_sync → graphite_navigate
+       → graphite_change → graphite_submit_stack (dry-run) → graphite_submit_stack (apply)
+```
+
+The extension wraps `gt` only. It deliberately does **not** call `gh`, edit PR
+titles/bodies, fetch review comments, or perform stack surgery
+(split/fold/move/squash). Use the `gt` or `gh` CLI directly for those.
 
 ## Requirements
 
@@ -27,40 +32,67 @@ pi install /path/to/pi-graphite
 pi -e /path/to/pi-graphite
 ```
 
+The package also ships a `graphite` skill (`skills/graphite/SKILL.md`) that pi
+auto-discovers. It describes the golden path and per-recipe tool calls; the
+agent loads it on demand.
+
 ## Registered tools
 
-| Tool                         | Resource | Wraps                                             |
-| ---------------------------- | -------- | ------------------------------------------------- |
-| `graphite_repo`              | repo     | `gt trunk`, `gt init`, `gt log short`             |
-| `graphite_stack_view`        | stack    | `gt log` / `gt log short` / `gt log long`         |
-| `graphite_stack_restack`     | stack    | `gt restack` (+ `--branch/--downstack/--upstack/--only`) |
-| `graphite_stack_reorganize`  | stack    | `gt move`, `gt fold`, `gt split --by-file` (move_branch supports `dryRun` via `git merge-tree` simulation) |
-| `graphite_stack_compose`     | stack    | linearize branches by cherry-picking `base..branch` unique commits in order, then `gt track` each |
-| `graphite_branch_inspect`    | branch   | `gt info` (+ `gt parent`, `gt children`)          |
-| `graphite_branch_create`     | branch   | `gt create`                                       |
-| `graphite_branch_update`     | branch   | `gt modify`, `gt absorb`, `gt squash`, `gt pop`, `gt rename`, `gt delete` |
-| `graphite_branch_tracking`   | branch   | `gt track`, `gt untrack`, `gt freeze`, `gt unfreeze` |
-| `graphite_branch_navigate`   | branch   | `gt checkout`, `gt up`, `gt down`, `gt top`, `gt bottom` |
-| `graphite_remote_sync`       | remote   | `gt sync`, `gt get`                               |
-| `graphite_pr_submit`         | PR       | `gt submit` (dry-run by default)                  |
-| `graphite_pr_lifecycle`      | PR       | `gh pr view --json url`, `gt merge`, `gt unlink`  |
-| `graphite_recovery`          | recovery | `gt continue`, `gt abort`, `gt undo`              |
+| Tool                     | Purpose                                                                 | Wraps                                          |
+| ------------------------ | ----------------------------------------------------------------------- | ---------------------------------------------- |
+| `graphite_status`        | Read-only snapshot: current stack + current branch + PR + restack hints | `gt log --stack`, `gt info`                    |
+| `graphite_setup`         | Initialize Graphite or track an existing Git branch with explicit parent | `gt init --trunk`, `gt track --parent`         |
+| `graphite_sync`          | Start-of-day / after-merge cleanup + restack                            | `gt sync`                                      |
+| `graphite_navigate`      | Move around the stack                                                   | `gt checkout`, `gt up`/`down`/`top`/`bottom`   |
+| `graphite_change`        | Create / amend a stacked branch                                         | `gt create -am`, `gt modify -am`, `gt modify --into`, `gt absorb` |
+| `graphite_submit_stack`  | Push the entire stack and open/update PRs (dry-run by default)          | `gt submit --stack --no-edit --no-ai`          |
+| `graphite_recover`       | Continue / abort / undo                                                 | `gt continue`, `gt abort`, `gt undo`           |
 
-## Conventions
+## Golden path
 
-- Every tool requires an absolute `cwd`.
-- `gt` is invoked with `--cwd <cwd> --no-interactive` by default. No shell strings.
-- Editor, pager, and browser env are forced safe (`GT_EDITOR=true`, `GT_PAGER=`, `BROWSER=true`, etc.); commands have a hard timeout.
-- Interactive editor/browser/hunk paths are rejected (`edit:true`, `stage:"patch"`, `patch:true`, `editMode:"web"`, `view:true`, interactive trunk add, merge `confirm:true`).
-- Remote / destructive operations require explicit ack flags:
-  - `graphite_pr_submit` defaults to `--dry-run`; `apply: true` needs `confirmRemote: true`.
-  - `graphite_pr_lifecycle action=merge` defaults to `--dry-run`; `apply: true` needs `confirmRemote: true`.
-  - `graphite_remote_sync` with `force` or `deleteAll` needs `confirmDestructive: true`.
-  - `graphite_branch_update action=delete close:true` needs `confirmRemote: true`.
-  - `graphite_stack_reorganize action=fold foldClose:true` needs `confirmRemote: true`.
-- Output is ANSI-stripped and truncated to ~50 KB / 2000 lines.
-- Stderr is parsed into structured `hints` (e.g. `notInitialized`, `conflictHalted`,
-  `checkedOutElsewhere`, `restackNeeded`, `trunkOutOfSync`).
+```text
+graphite_status
+graphite_setup                               # only if repo not initialized or branch untracked
+graphite_sync                                # at session start, or after merges
+graphite_navigate action=checkout branch=…   # move to the target PR / parent
+# user edits files
+graphite_change action=create message="…"     # or action=amend
+graphite_submit_stack apply=false             # review the dry-run plan
+graphite_submit_stack apply=true confirmRemote=true
+```
+
+Conflict path:
+
+```text
+# resolve files, git add them
+graphite_recover action=continue
+```
+
+Never run `git rebase --continue` after a gt command — use
+`graphite_recover action=continue` so Graphite propagates the resolution to
+dependent branches.
+
+## Conventions and guardrails
+
+- Every tool requires absolute `cwd`.
+- `gt` is invoked with `--cwd <cwd> --no-interactive`, no shell strings. Tools that support AI metadata pass `--no-ai`.
+- Editor / pager / browser env is forced safe (`GT_EDITOR=true`, `GT_PAGER=`,
+  `BROWSER=true`, …). Commands have a hard timeout.
+- Interactive editor / hunk / browser / reorder paths are not exposed.
+- `graphite_setup action=track_branch` requires explicit `branch`, explicit
+  `parent`, and `confirmParent:true`; do not guess parent if unclear.
+- `graphite_setup action=init_repo reset:true` needs `confirmDestructive:true`.
+- `graphite_submit_stack` defaults to `--dry-run`; `apply:true` also needs
+  `confirmRemote:true`. `--force` push also requires `confirmRemote:true`.
+- `graphite_sync` with `force` or `deleteAll` needs `confirmDestructive:true`.
+- `graphite_recover action=continue` refuses to proceed if tracked files
+  still contain `<<<<<<<` markers, unless `allowConflictMarkers:true`.
+- Output is ANSI-stripped, branded ("Graphite" not "Charcoal"), and truncated
+  to ~50 KB / 2000 lines.
+- Stderr is parsed into structured `hints`
+  (`notInitialized`, `conflictHalted`, `restackNeeded`, `trunkOutOfSync`,
+  `branchNotTracked`, `noChangesStaged`, `checkedOutElsewhere`,
+  `operatingOnTrunk`, …).
 
 ## License
 

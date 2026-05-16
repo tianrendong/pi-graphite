@@ -204,28 +204,28 @@ export async function enrichFailure(cwd: string, f: FormattedResult): Promise<vo
     const b = branch ?? "<current-branch>";
     const p = trunk ?? "<trunk>";
     parts.push(
-      `Current branch (${b}) is not tracked by Graphite. To track it, call: ` +
-        `graphite_branch_tracking({ action: "track", branch: "${b}", parent: "${p}" }). ` +
-        `Verify parent is correct before applying.`,
+      `Current branch (${b}) is not tracked by Graphite. To track it after verifying the intended parent, call: ` +
+        `graphite_setup({ action: "track_branch", branch: "${b}", parent: "${p}", confirmParent: true }). ` +
+        `Do not guess the parent if unclear; ask the user first.`,
     );
   }
   if (f.hints.notInitialized) {
     parts.push(
-      `Graphite not initialized in this repo. Call: graphite_repo({ action: "init", trunk: "<trunk-branch>" }).`,
+      `Graphite not initialized in this repo. Call: graphite_setup({ action: "init_repo", trunk: "<trunk-branch>" }).`,
     );
   }
   if (f.hints.conflictHalted) {
     parts.push(
       `A Graphite command is halted by a conflict. After resolving in git, call: ` +
-        `graphite_recovery({ action: "continue" }) (or "abort").`,
+        `graphite_recover({ action: "continue" }) (or "abort").`,
     );
   }
   if (f.hints.restackNeeded) {
-    parts.push(`Stack is out of date. Call: graphite_stack_restack().`);
+    parts.push(`Stack is out of date. Call: graphite_sync() to sync and restack.`);
   }
   if (f.hints.trunkOutOfSync) {
     parts.push(
-      `Trunk is out of sync with remote. Call: graphite_remote_sync({ action: "sync" }) first.`,
+      `Trunk is out of sync with remote. Call: graphite_sync() first.`,
     );
   }
   if (f.hints.notAuthenticated) {
@@ -237,7 +237,7 @@ export async function enrichFailure(cwd: string, f: FormattedResult): Promise<vo
     const b = f.hints.checkedOutElsewhere.branch ?? "<branch>";
     parts.push(
       `Branch ${b} is checked out in another worktree. Switch to that worktree, or use ` +
-        `\`graphite_branch_create({ onto: "${b}", ... })\` to stack a new branch on top.`,
+        `switch to a different branch with graphite_navigate before mutating the stack.`,
     );
   }
   if (f.hints.invalidArgument) {
@@ -247,7 +247,7 @@ export async function enrichFailure(cwd: string, f: FormattedResult): Promise<vo
   }
   if (f.hints.operatingOnTrunk) {
     parts.push(
-      `Operation refused on the trunk branch. Check out a non-trunk branch first (graphite_branch_navigate).`,
+      `Operation refused on the trunk branch. Check out a non-trunk branch first with graphite_navigate.`,
     );
   }
 

@@ -1,69 +1,52 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { registerRepo } from "./tools/repo";
-import {
-  registerStackView,
-  registerStackRestack,
-  registerStackReorganize,
-  registerStackCompose,
-} from "./tools/stack";
-import {
-  registerBranchInspect,
-  registerBranchCreate,
-  registerBranchUpdate,
-  registerBranchTracking,
-  registerBranchNavigate,
-} from "./tools/branch";
-import { registerRemoteSync } from "./tools/remote";
-import { registerPrSubmit, registerPrLifecycle } from "./tools/pr";
-import { registerRecovery } from "./tools/recovery";
+import { registerStatus } from "./tools/status";
+import { registerSetup } from "./tools/setup";
+import { registerSync } from "./tools/sync";
+import { registerNavigate } from "./tools/navigate";
+import { registerChange } from "./tools/change";
+import { registerSubmitStack } from "./tools/submit";
+import { registerRecover } from "./tools/recover";
 
 /**
- * pi-graphite — Layer A (Domain Resource).
+ * pi-graphite — opinionated `gt` wrapper for stacked PR workflows.
  *
- * Registers structured tools that wrap the Graphite (`gt`) CLI:
+ * Seven workflow tools, one correct path:
  *
- *   graphite_repo
- *   graphite_stack_view
- *   graphite_stack_restack
- *   graphite_stack_reorganize
- *   graphite_stack_compose
- *   graphite_branch_inspect
- *   graphite_branch_create
- *   graphite_branch_update
- *   graphite_branch_tracking
- *   graphite_branch_navigate
- *   graphite_remote_sync
- *   graphite_pr_submit
- *   graphite_pr_lifecycle
- *   graphite_recovery
+ *   graphite_status        — see where you are in the stack
+ *   graphite_setup         — init repo / track existing branch when needed
+ *   graphite_sync          — start-of-day / after-merge cleanup + restack
+ *   graphite_navigate      — move to the branch / PR you want to mutate
+ *   graphite_change        — create or amend a stacked branch
+ *   graphite_submit_stack  — push the whole stack and open/update PRs
+ *   graphite_recover       — continue / abort / undo after conflicts or mistakes
+ *
+ * Golden path:
+ *
+ *   status → (setup if needed) → sync → navigate → change → submit_stack(dry-run) → submit_stack(apply)
+ *
+ * Conflict path:
+ *
+ *   resolve files → graphite_recover continue
  *
  * Conventions:
  * - Every tool requires absolute `cwd`.
- * - `gt` is invoked with --cwd <cwd> --no-interactive by default.
- * - Editor/pager/browser env is forced safe; interactive hunk/editor/browser paths are rejected.
- * - Remote / destructive operations require explicit `confirmRemote` /
- *   `confirmDestructive` flags. Submit/merge default to dry-run.
- * - Output is ANSI-stripped and truncated to ~50KB / 2000 lines.
+ * - `gt` is invoked with --cwd <cwd> --no-interactive by default; tools that support AI metadata pass --no-ai.
+ * - Editor / pager / browser env is forced safe; interactive editor / hunk /
+ *   browser flows are not exposed.
+ * - graphite_submit_stack defaults to --dry-run; apply requires
+ *   `apply:true` AND `confirmRemote:true`.
+ * - graphite_sync with force / deleteAll requires `confirmDestructive:true`.
+ * - This extension wraps `gt` only. It deliberately does not call `gh`,
+ *   touch PR titles/bodies, run reviews, or do stack surgery
+ *   (split/fold/move/squash). Use the gt CLI or another tool for those.
  */
 export default function (pi: ExtensionAPI) {
-  registerRepo(pi);
-
-  registerStackView(pi);
-  registerStackRestack(pi);
-  registerStackReorganize(pi);
-  registerStackCompose(pi);
-
-  registerBranchInspect(pi);
-  registerBranchCreate(pi);
-  registerBranchUpdate(pi);
-  registerBranchTracking(pi);
-  registerBranchNavigate(pi);
-
-  registerRemoteSync(pi);
-
-  registerPrSubmit(pi);
-  registerPrLifecycle(pi);
-
-  registerRecovery(pi);
+  registerStatus(pi);
+  registerSetup(pi);
+  registerSync(pi);
+  registerNavigate(pi);
+  registerChange(pi);
+  registerSubmitStack(pi);
+  registerRecover(pi);
 }

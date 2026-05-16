@@ -1,7 +1,12 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_COMMAND_TIMEOUT_MS, killProcessGroup, runGt, safeNoninteractiveEnv } from "../lib/exec";
+import {
+  DEFAULT_COMMAND_TIMEOUT_MS,
+  killProcessGroup,
+  runGt,
+  safeNoninteractiveEnv,
+} from "../lib/exec";
 import { ensureSuccess, renderText } from "../lib/result";
 import { CwdParam, StringEnum, Type, type ToolReturn } from "../lib/schema";
 
@@ -45,53 +50,62 @@ function runGit(
     child.on("close", (code) => {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", onAbort);
-      resolve({ exitCode: killed ? -1 : (code ?? -1), stdout: out, stderr: err });
+      resolve({
+        exitCode: killed ? -1 : (code ?? -1),
+        stdout: out,
+        stderr: err,
+      });
     });
   });
 }
 
-/** Return list of tracked files that still contain conflict markers. */
 async function findUnresolvedConflictMarkers(
   cwd: string,
   signal?: AbortSignal,
 ): Promise<string[]> {
-  // grep for the canonical 7-char start marker at line start across tracked files.
-  // `git grep` is cheap and respects gitignore / tracked-only by default.
-  const r = await runGit(
-    ["grep", "-l", "-E", "^<{7} "],
-    cwd,
-    signal,
-  );
-  if (r.exitCode > 1) return []; // git grep returns 1 for no matches, >1 is real error
+  const r = await runGit(["grep", "-l", "-E", "^<{7} "], cwd, signal);
+  if (r.exitCode > 1) return [];
   return r.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
 }
 
-export function registerRecovery(pi: ExtensionAPI) {
+/**
+ * graphite_recover — `gt continue` / `gt abort` / `gt undo`.
+ *
+ * After a conflict during sync/restack/create/modify, resolve the files
+ * (and `git add` them), then call action=continue. Never use
+ * `git rebase --continue` — Graphite needs to propagate the resolution to
+ * dependent branches.
+ */
+export function registerRecover(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "graphite_recovery",
-    label: "Graphite: recovery",
+    name: "graphite_recover",
+    label: "Graphite: recover",
     description:
-      "Recover from conflicts or mistakes: continue a halted command, abort it, or undo the most recent Graphite mutation in this worktree.",
+      "Recover from a halted Graphite operation or a recent mistake: continue (resume a paused gt command after resolving conflicts), abort (cancel the in-flight operation), or undo (revert the most recent gt mutation in this worktree). Always prefer this over `git rebase --continue`.",
     promptSnippet:
-      "graphite_recovery: continue / abort / undo Graphite commands",
+      "graphite_recover: continue / abort / undo — never use `git rebase --continue`",
     promptGuidelines: [
-      "After resolving a rebase conflict, run graphite_recovery action=continue to resume the original gt command.",
-      "graphite_recovery action=undo only undoes commands run from the current worktree.",
+      "After resolving a rebase or cherry-pick conflict from a gt command, call graphite_recover action=continue (not `git rebase --continue`) so Graphite propagates the fix to dependent branches.",
+      "graphite_recover action=undo only undoes commands run from the current worktree.",
     ],
     parameters: Type.Object({
       cwd: CwdParam,
       action: StringEnum(["continue", "abort", "undo"] as const),
       stageAll: Type.Optional(
-        Type.Boolean({ description: "action=continue: stage all changes first (--all)." }),
+        Type.Boolean({
+          description: "action=continue: stage all changes first (--all).",
+        }),
       ),
       allowConflictMarkers: Type.Optional(
         Type.Boolean({
           description:
-            "action=continue: bypass the pre-flight check that refuses to continue when tracked files still contain `<<<<<<<` conflict markers. Default false. Only set true if you know the markers are intentional (e.g. tests).",
+            "action=continue: bypass the pre-flight check that refuses to continue when tracked files still contain `<<<<<<<` markers. Default false.",
         }),
       ),
       force: Type.Optional(
-        Type.Boolean({ description: "action=abort|undo: skip confirmation prompt (--force)." }),
+        Type.Boolean({
+          description: "action=abort|undo: skip confirmation (--force).",
+        }),
       ),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {
@@ -102,10 +116,9 @@ export function registerRecovery(pi: ExtensionAPI) {
             const dirty = await findUnresolvedConflictMarkers(p.cwd, signal);
             if (dirty.length) {
               throw new Error(
-                `graphite_recovery: refusing to continue — ${dirty.length} tracked file(s) still contain conflict markers (\`<<<<<<<\`):\n` +
+                `graphite_recover: refusing to continue — ${dirty.length} tracked file(s) still contain conflict markers (\`<<<<<<<\`):\n` +
                   dirty.map((f) => `  - ${f}`).join("\n") +
-                  `\n\nResolve each file (remove <<<<<<< / ======= / >>>>>>> blocks), then re-run. ` +
-                  `If markers are intentional, pass allowConflictMarkers:true.`,
+                  `\n\nResolve each file, then re-run. If markers are intentional, pass allowConflictMarkers:true.`,
               );
             }
           }

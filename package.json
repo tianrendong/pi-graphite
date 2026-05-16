@@ -1,7 +1,7 @@
 {
   "name": "pi-graphite",
-  "version": "0.2.3",
-  "description": "Structured pi tools for the Graphite (gt) CLI.",
+  "version": "0.3.0",
+  "description": "Opinionated pi tools + skill for stacked PR workflows with the Graphite (gt) CLI.",
   "keywords": [
     "pi",
     "pi-package",
@@ -12,12 +12,16 @@
   "license": "MIT",
   "files": [
     "src",
+    "skills",
     "README.md",
     "LICENSE"
   ],
   "pi": {
     "extensions": [
       "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   },
   "peerDependencies": {

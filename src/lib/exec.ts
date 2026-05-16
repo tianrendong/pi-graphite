@@ -41,6 +41,10 @@ export const SAFE_NONINTERACTIVE_ENV: Record<string, string> = {
   LESS: "FRX",
   BROWSER: "true",
   GH_BROWSER: "true",
+  // gt-gh treats this as "invoked from Graphite Interactive" and forces
+  // non-interactive behavior regardless of argv. Other gt builds should
+  // ignore it if unsupported; keep --no-interactive argv guards too.
+  GRAPHITE_INTERACTIVE: "1",
 };
 
 export function safeNoninteractiveEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
@@ -87,11 +91,26 @@ export function truncateOutput(s: string): string {
 }
 
 /**
+ * Tokens that re-enable interactive flows in gt and must never appear in
+ * rawArgs. Tool authors should not pass these directly, and user-supplied
+ * strings should be routed through argv helpers (assertSafeRef / flagEq)
+ * so values starting with `-` can never reach this list. We still scan
+ * defensively here as belt-and-braces.
+ */
+const FORBIDDEN_RAW_TOKENS = new Set<string>([
+  "--interactive",
+  "--interactive-rebase",
+]);
+
+/**
  * Run `gt` with structured args. Never builds a shell string.
  *
- * - Always injects --cwd <abs>.
- * - Always injects --no-interactive. No escape hatch by design: agent-driven
- *   tools must never block on a TTY prompt.
+ * - Always injects --cwd <abs> and --no-interactive at the *start*.
+ * - Also appends a trailing --no-interactive after rawArgs as defense in
+ *   depth: yargs lets a later `--interactive` override an earlier
+ *   `--no-interactive`, so we ensure --no-interactive is always the last
+ *   word on the global option.
+ * - Refuses to run if rawArgs contains a known interactive-toggle token.
  * - Does not inject --quiet (we want stderr diagnostics).
  */
 export async function runGt(
@@ -99,8 +118,21 @@ export async function runGt(
   opts: GtRunOptions,
 ): Promise<GtRunResult> {
   const cwd = resolvePath(opts.cwd);
+  for (const tok of rawArgs) {
+    // Match both `--interactive` and `--interactive=...` forms.
+    const head = tok.split("=", 1)[0];
+    if (FORBIDDEN_RAW_TOKENS.has(head)) {
+      throw new Error(
+        `runGt: refused to pass forbidden token ${JSON.stringify(tok)} to gt. ` +
+          `Interactive flows are disabled in this extension.`,
+      );
+    }
+  }
   const args = ["--cwd", cwd, "--no-interactive"];
   args.push(...rawArgs);
+  // Trailing --no-interactive wins against any later `--interactive` that
+  // might still slip in via an unaudited code path.
+  args.push("--no-interactive");
 
   return new Promise<GtRunResult>((resolve) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
