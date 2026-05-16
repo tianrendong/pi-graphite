@@ -5,7 +5,7 @@ import { registerSetup } from "./tools/setup";
 import { registerSync } from "./tools/sync";
 import { registerNavigate } from "./tools/navigate";
 import { registerChange } from "./tools/change";
-import { registerSubmitStack } from "./tools/submit";
+import { registerSubmit } from "./tools/submit";
 import { registerRecover } from "./tools/recover";
 
 /**
@@ -18,12 +18,12 @@ import { registerRecover } from "./tools/recover";
  *   graphite_sync          — start-of-day / after-merge cleanup + restack
  *   graphite_navigate      — move to the branch / PR you want to mutate
  *   graphite_change        — create or amend a stacked branch
- *   graphite_submit_stack  — push the whole stack and open/update PRs
+ *   graphite_submit  — push the whole stack and open/update PRs
  *   graphite_recover       — continue / abort / undo after conflicts or mistakes
  *
  * Golden path:
  *
- *   status → (setup if needed) → sync → navigate → change → submit_stack(dry-run) → submit_stack(apply)
+ *   status → (setup if needed) → sync → navigate → change → submit(dry-run) → submit(apply)
  *
  * Conflict path:
  *
@@ -34,7 +34,7 @@ import { registerRecover } from "./tools/recover";
  * - `gt` is invoked with --cwd <cwd> --no-interactive by default; tools that support AI metadata pass --no-ai.
  * - Editor / pager / browser env is forced safe; interactive editor / hunk /
  *   browser flows are not exposed.
- * - graphite_submit_stack defaults to --dry-run; apply requires
+ * - graphite_submit defaults to --dry-run; apply requires
  *   `apply:true` AND `confirmRemote:true`.
  * - graphite_sync with force / deleteAll requires `confirmDestructive:true`.
  * - This extension wraps `gt` only. It deliberately does not call `gh`,
@@ -47,6 +47,6 @@ export default function (pi: ExtensionAPI) {
   registerSync(pi);
   registerNavigate(pi);
   registerChange(pi);
-  registerSubmitStack(pi);
+  registerSubmit(pi);
   registerRecover(pi);
 }

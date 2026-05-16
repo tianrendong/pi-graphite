@@ -42,7 +42,7 @@ The extension registers seven tools. Prefer them over `gt`/`git`/`gh` in bash.
 | `graphite_sync` | `gt sync` — pull trunk, drop merged branches, restack |
 | `graphite_navigate` | `gt checkout` / `up` / `down` / `top` / `bottom` / trunk |
 | `graphite_change` | `gt create` / `gt modify` / `gt modify --into` / `gt absorb` |
-| `graphite_submit_stack` | `gt submit --stack --no-edit` (dry-run by default) |
+| `graphite_submit` | `gt submit --stack --no-edit` (dry-run by default) |
 | `graphite_recover` | `gt continue` / `gt abort` / `gt undo` |
 
 All tools require an absolute `cwd`.
@@ -60,9 +60,9 @@ graphite_navigate                   (move to the branch you want to mutate)
      ↓
 graphite_change                     (create or amend)
      ↓
-graphite_submit_stack apply=false   (review dry-run plan)
+graphite_submit apply=false   (review dry-run plan)
      ↓
-graphite_submit_stack apply=true    (push, with confirmRemote=true)
+graphite_submit apply=true    (push, with confirmRemote=true)
    confirmRemote=true
 ```
 
@@ -129,9 +129,9 @@ graphite_status({ cwd })        # confirm state
 graphite_status({ cwd })                     # confirm position
 # ... user makes code changes ...
 graphite_change({ cwd, action: "create", message: "..." })
-graphite_submit_stack({ cwd, apply: false })
+graphite_submit({ cwd, apply: false })
 # review plan with user; then:
-graphite_submit_stack({ cwd, apply: true, confirmRemote: true })
+graphite_submit({ cwd, apply: true, confirmRemote: true })
 ```
 
 ### Update an existing PR
@@ -141,8 +141,8 @@ graphite_status({ cwd })
 graphite_navigate({ cwd, action: "checkout", branch: "<pr-branch>" })
 # ... user makes code changes ...
 graphite_change({ cwd, action: "amend", message: "..." })
-graphite_submit_stack({ cwd, apply: false })
-graphite_submit_stack({ cwd, apply: true, confirmRemote: true })
+graphite_submit({ cwd, apply: false })
+graphite_submit({ cwd, apply: true, confirmRemote: true })
 ```
 
 ### Add a child PR off a specific parent
@@ -151,7 +151,7 @@ graphite_submit_stack({ cwd, apply: true, confirmRemote: true })
 graphite_navigate({ cwd, action: "checkout", branch: "<parent-branch>" })
 # ... changes ...
 graphite_change({ cwd, action: "create", message: "..." })
-graphite_submit_stack({ cwd, apply: false })
+graphite_submit({ cwd, apply: false })
 ```
 
 ### Land changes into a downstack branch
@@ -160,7 +160,7 @@ graphite_submit_stack({ cwd, apply: false })
 # Make the change locally (working tree dirty).
 graphite_change({ cwd, action: "amend_into", into: "<downstack-branch>", message: "..." })
 graphite_status({ cwd })
-graphite_submit_stack({ cwd, apply: false })
+graphite_submit({ cwd, apply: false })
 ```
 
 For larger reshuffles touching several downstack commits, prefer `absorb`:
@@ -199,7 +199,7 @@ graphite_recover({ cwd, action: "undo" })
 
 ## Rules
 
-- **Submit stacks, not branches.** `graphite_submit_stack` always passes
+- **Submit stacks, not branches.** `graphite_submit` always passes
   `--stack`. There is no safe single-branch submit path in this extension.
   If the user truly needs to push only one branch, ask them to run
   `gt submit --branch=<name>` themselves in their own terminal — do not
@@ -213,7 +213,7 @@ graphite_recover({ cwd, action: "undo" })
 - **Prefer `graphite_sync` over manual restack.** The extension does not
   expose a standalone restack tool. Sync covers both pull + restack.
 - **Always dry-run first.** Show the user the dry-run plan from
-  `graphite_submit_stack apply=false` before pushing.
+  `graphite_submit apply=false` before pushing.
 - **`apply:true` requires `confirmRemote:true`.** The tool will refuse
   otherwise. This is intentional friction.
 - **Destructive sync flags require `confirmDestructive:true`** (`force`,

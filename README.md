@@ -5,7 +5,7 @@ Opinionated pi tools + skill that wrap the [Graphite](https://graphite.com)
 
 ```
 graphite_status → (graphite_setup if needed) → graphite_sync → graphite_navigate
-       → graphite_change → graphite_submit_stack (dry-run) → graphite_submit_stack (apply)
+       → graphite_change → graphite_submit (dry-run) → graphite_submit (apply)
 ```
 
 The extension wraps `gt` only. It deliberately does **not** call `gh`, edit
@@ -48,7 +48,7 @@ agent loads it on demand.
 | `graphite_sync`          | Start-of-day / after-merge cleanup + restack                            | `gt sync`                                      |
 | `graphite_navigate`      | Move around the stack                                                   | `gt checkout`, `gt up`/`down`/`top`/`bottom`   |
 | `graphite_change`        | Create / amend a stacked branch                                         | `gt create -am`, `gt modify -am`, `gt modify --into`, `gt absorb` |
-| `graphite_submit_stack`  | Push the entire stack and open/update PRs (dry-run by default)          | `gt submit --stack --no-edit --no-ai`          |
+| `graphite_submit`  | Push the entire stack and open/update PRs (dry-run by default)          | `gt submit --stack --no-edit --no-ai`          |
 | `graphite_recover`       | Continue / abort / undo                                                 | `gt continue`, `gt abort`, `gt undo`           |
 
 ## Golden path
@@ -60,8 +60,8 @@ graphite_sync                                # at session start, or after merges
 graphite_navigate action=checkout branch=…   # move to the target PR / parent
 # user edits files
 graphite_change action=create message="…"     # or action=amend
-graphite_submit_stack apply=false             # review the dry-run plan
-graphite_submit_stack apply=true confirmRemote=true
+graphite_submit apply=false             # review the dry-run plan
+graphite_submit apply=true confirmRemote=true
 ```
 
 Conflict path:
@@ -86,7 +86,7 @@ dependent branches.
 - `graphite_setup action=track_branch` requires explicit `branch`, explicit
   `parent`, and `confirmParent:true`; do not guess parent if unclear.
 - `graphite_setup action=init_repo reset:true` needs `confirmDestructive:true`.
-- `graphite_submit_stack` defaults to `--dry-run`; `apply:true` also needs
+- `graphite_submit` defaults to `--dry-run`; `apply:true` also needs
   `confirmRemote:true`. `--force` push also requires `confirmRemote:true`.
 - `graphite_sync` with `force` or `deleteAll` needs `confirmDestructive:true`.
 - `graphite_recover action=continue` refuses to proceed if tracked files
