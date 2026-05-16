@@ -22,8 +22,9 @@ Use this skill whenever the user wants to:
 
 Do not use it for:
 
-- editing PR titles / bodies / labels / reviewers metadata (use `gh` directly)
-- reading PR review comments or CI status (use `gh` directly)
+- editing PR titles / bodies / labels / reviewers metadata — prefer a
+  dedicated `gh` tool/extension; see the `gh` rule below
+- reading PR review comments or CI status — same
 - rewriting history beyond create/amend (split / fold / move / squash /
   reorder). The extension does not expose stack surgery. Do not invoke
   `gt` directly from bash for these — those subcommands prompt
@@ -68,7 +69,7 @@ graphite_submit_stack apply=true    (push, with confirmRemote=true)
 When a `gt` command halts on conflict:
 
 ```
-resolve files in editor → git add <files> → graphite_recover action="continue"
+resolve files in editor → git add -- <paths> → graphite_recover action="continue"
 ```
 
 Never run `git rebase --continue` after a Graphite-initiated rebase; use
