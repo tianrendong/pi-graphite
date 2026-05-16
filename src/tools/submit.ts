@@ -10,7 +10,7 @@ import {
 } from "../lib/schema";
 
 /**
- * graphite_submit_stack — the only blessed submit path.
+ * graphite_submit — the only blessed submit path.
  *
  * Wraps `gt submit --stack --no-edit --no-ai`. Defaults to --dry-run so the
  * caller can review the plan. Actually pushing requires `apply:true` AND
@@ -20,16 +20,16 @@ import {
  * current-branch-only submit. The skill calls out that the correct workflow
  * is always to submit the entire stack.
  */
-export function registerSubmitStack(pi: ExtensionAPI) {
+export function registerSubmit(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "graphite_submit_stack",
+    name: "graphite_submit",
     label: "Graphite: submit stack",
     description:
       "Push the entire current stack and create/update PRs via `gt submit --stack --no-edit`. Defaults to a dry-run plan; pass apply:true with confirmRemote:true to actually push. PR title/body editing is intentionally not exposed.",
     promptSnippet:
-      "graphite_submit_stack: plan or apply `gt submit --stack` for the full stack",
+      "graphite_submit: plan or apply `gt submit --stack` for the full stack",
     promptGuidelines: [
-      "Always call graphite_submit_stack with apply:false (default) first to review the dry-run plan, then call again with apply:true and confirmRemote:true to actually push.",
+      "Always call graphite_submit with apply:false (default) first to review the dry-run plan, then call again with apply:true and confirmRemote:true to actually push.",
       "This extension does not edit PR titles/bodies. If you need to set them, do it outside this extension after the push.",
     ],
     parameters: Type.Object({
