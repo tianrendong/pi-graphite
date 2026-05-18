@@ -1,6 +1,6 @@
 {
   "name": "pi-graphite",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Opinionated pi tools + skill for stacked PR workflows with the Graphite (gt) CLI.",
   "keywords": [
     "pi",
@@ -10,6 +10,14 @@
     "stacked-prs"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/tianrendong/pi-graphite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tianrendong/pi-graphite/issues"
+  },
+  "homepage": "https://github.com/tianrendong/pi-graphite#readme",
   "files": [
     "src",
     "skills",
