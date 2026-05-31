@@ -129,7 +129,8 @@ export function registerSubmit(pi: ExtensionAPI) {
 
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
-      const f = await ensureSuccess(label, r, p.cwd);
+      // A dry-run does not mutate; an applied submit does.
+      const f = await ensureSuccess(label, r, p.cwd, { mutating: apply });
       return {
         content: [{ type: "text", text: renderText(label, f) }],
         details: { apply, result: f },

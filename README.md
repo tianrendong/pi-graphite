@@ -1,7 +1,7 @@
 # pi-graphite
 
 Opinionated pi tools + skill that wrap the [Graphite](https://graphite.com)
-`gt` CLI for stacked PR workflows. Seven tools, one correct path.
+`gt` CLI for stacked PR workflows. A small set of tools, one correct path.
 
 ```
 graphite_status → (graphite_setup if needed) → graphite_sync → graphite_navigate
@@ -46,10 +46,11 @@ agent loads it on demand.
 | `graphite_status`        | Read-only snapshot: current stack + current branch + PR + restack hints | `gt log --stack`, `gt info`                    |
 | `graphite_setup`         | Initialize Graphite or track an existing Git branch with explicit parent | `gt init --trunk`, `gt track --parent`         |
 | `graphite_sync`          | Start-of-day / after-merge cleanup + restack                            | `gt sync`                                      |
+| `graphite_get`           | Pull a branch / stack from the remote                                   | `gt get <branch>`                              |
 | `graphite_navigate`      | Move around the stack                                                   | `gt checkout`, `gt up`/`down`/`top`/`bottom`   |
 | `graphite_change`        | Create / amend a stacked branch                                         | `gt create -am`, `gt modify -am`, `gt modify --into`, `gt absorb` |
 | `graphite_submit`  | Push the entire stack and open/update PRs (dry-run by default)          | `gt submit --stack --no-edit --no-ai`          |
-| `graphite_recover`       | Continue / abort / undo                                                 | `gt continue`, `gt abort`, `gt undo`           |
+| `graphite_recover`       | Continue / abort / undo / restack                                       | `gt continue`, `gt abort`, `gt undo`, `gt restack` |
 
 ## Golden path
 
@@ -80,7 +81,9 @@ dependent branches.
 - Every tool requires absolute `cwd`.
 - `gt` is invoked with `--cwd <cwd> --no-interactive`, no shell strings. Tools that support AI metadata pass `--no-ai`.
 - Editor / pager / browser env is forced safe (`GT_EDITOR=true`, `GT_PAGER=`,
-  `BROWSER=true`, …). Commands have a hard timeout.
+  `BROWSER=true`, …). Commands have a hard timeout. `GRAPHITE_INTERACTIVE` is
+  deliberately **not** set — some `gt` builds treat it as "running inside
+  Graphite Interactive" and silently return empty output for read commands.
 - Interactive editor / hunk / browser / reorder paths are not exposed.
 - Commands echoed in tool output are safe to copy-paste back into a shell.
 - `graphite_setup action=track_branch` requires explicit `branch`, explicit
@@ -93,10 +96,20 @@ dependent branches.
   still contain `<<<<<<<` markers, unless `allowConflictMarkers:true`.
 - Output is ANSI-stripped, branded ("Graphite" not "Charcoal"), and truncated
   to ~50 KB / 2000 lines.
-- Stderr is parsed into structured `hints`
+- Failure output is parsed into structured `hints`
   (`notInitialized`, `conflictHalted`, `restackNeeded`, `trunkOutOfSync`,
   `branchNotTracked`, `noChangesStaged`, `checkedOutElsewhere`,
-  `operatingOnTrunk`, …).
+  `operatingOnTrunk`, `emptyOutput`, …).
+- Read commands that must produce output (`graphite_status`) treat an
+  exit-0 **empty stdout** as a failure (`emptyOutput` hint) instead of a
+  misleading "ok".
+- Output is also scanned (on success **and** failure) for non-fatal
+  `warnings` (`skippedBranches`, `remoteChanged`, `alreadyMerged`,
+  `needsRestack`). A result with warnings is reported as `ok (with warnings)`
+  so a `gt sync` / `gt submit` that silently skipped work is not mistaken for
+  a clean success.
+- A **mutating** command that fails appends a "partial side effects possible"
+  note, prompting a follow-up `graphite_status`.
 
 ### Git hooks
 
