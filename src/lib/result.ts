@@ -19,6 +19,40 @@ export interface GtHints {
   prMissing?: boolean;
   operatingOnTrunk?: boolean;
   invalidArgument?: string;
+  /** exit 0 but stdout empty when output was expected (e.g. status). */
+  emptyOutput?: boolean;
+}
+
+/**
+ * Non-fatal warnings parsed from BOTH stdout and stderr regardless of exit
+ * code. gt frequently exits 0 while skipping branches or noting that a
+ * branch changed remotely / already merged; surfacing these keeps the agent
+ * from trusting a misleadingly "ok" result.
+ */
+export interface GtWarnings {
+  skippedBranches?: boolean;
+  remoteChanged?: boolean;
+  alreadyMerged?: boolean;
+  needsRestack?: boolean;
+}
+
+const WARNING_PATTERNS: Array<[keyof GtWarnings, RegExp]> = [
+  ["skippedBranches", /\bskipp(?:ing|ed)\b/i],
+  ["remoteChanged", /updated\s+remotely|changed\s+on\s+remote|newer\s+(?:commit|version)\s+(?:on|exists)|diverged\s+from\s+remote/i],
+  ["alreadyMerged", /already\s+(?:been\s+)?merged|has\s+been\s+merged|closed\s+remotely/i],
+  // Negative lookbehind avoids matching "does not need to be restacked".
+  ["needsRestack", /(?<!not\s)needs?\s+(?:to\s+be\s+)?restack|run\s+`?gt\s+restack`?|out\s+of\s+date\s+with\s+(?:its\s+)?parent/i],
+];
+
+function parseWarnings(r: GtRunResult): GtWarnings {
+  const text = `${r.stdout}\n${r.stderr}`;
+  const w: GtWarnings = {};
+  // A help/usage dump is full of command descriptions, not real warnings.
+  if (looksLikeUsageDump(text)) return w;
+  for (const [key, re] of WARNING_PATTERNS) {
+    if (re.test(text)) (w as Record<string, unknown>)[key] = true;
+  }
+  return w;
 }
 
 // Patterns run only on failure text.
@@ -68,9 +102,29 @@ const PATTERNS: Array<[Exclude<keyof GtHints, "checkedOutElsewhere" | "invalidAr
   ],
 ];
 
+/**
+ * gt dumps its full usage/help (Commands:/Options: blocks) on an unknown
+ * argument. Those command descriptions contain phrases ("halted by a rebase
+ * conflict", "restack", …) that would otherwise trigger false-positive
+ * hints. Detect the dump so we can suppress content-derived hints and keep
+ * only the invalidArgument signal.
+ */
+function looksLikeUsageDump(text: string): boolean {
+  return /\n\s*Commands:\s*\n/i.test(text) && /\n\s*Options:\s*\n/i.test(text);
+}
+
 function parseHints(r: GtRunResult): GtHints {
   const text = `${r.stdout}\n${r.stderr}`;
   const hints: GtHints = {};
+
+  // Match both singular and plural ("Unknown argument(s):").
+  const invalid = text.match(/Unknown arguments?:\s*([^\n]+)/i);
+  if (invalid) hints.invalidArgument = invalid[1].trim();
+
+  // When gt printed its help dump, the only trustworthy signal is the
+  // unknown-argument line; everything else is description text.
+  if (looksLikeUsageDump(text)) return hints;
+
   for (const [key, re] of PATTERNS) {
     if (re.test(text)) (hints as Record<string, unknown>)[key] = true;
   }
@@ -80,10 +134,30 @@ function parseHints(r: GtRunResult): GtHints {
     );
     hints.checkedOutElsewhere = { branch: m?.[1], worktree: m?.[2] };
   }
-  const invalid = text.match(/Unknown argument:\s*([^\n]+)/i);
-  if (invalid) hints.invalidArgument = invalid[1].trim();
   return hints;
 }
+
+export interface FormatOptions {
+  /**
+   * When true, an exit-0 result with empty stdout is treated as a FAILURE
+   * (with an emptyOutput hint). Use for read commands that must produce
+   * output, e.g. `gt log --stack` / `gt info`. Without this, gt silently
+   * returning nothing would be reported as "ok" and blind the agent.
+   */
+  requireStdout?: boolean;
+  /**
+   * When true, a FAILURE appends a "partial side effects possible" note so
+   * the agent knows the command may have mutated state before erroring
+   * (e.g. `gt create` made a branch then hit a metadata lock). Set for any
+   * command that can change local/remote state.
+   */
+  mutating?: boolean;
+}
+
+const PARTIAL_SIDE_EFFECTS_NOTE =
+  "This command can mutate state, and it failed mid-flight: partial side effects are possible " +
+  "(e.g. a created branch, partial restack, a metadata lock, or some PRs already pushed). " +
+  "Run graphite_status to confirm the actual stack state before retrying.";
 
 export interface FormattedResult {
   ok: boolean;
@@ -91,17 +165,25 @@ export interface FormattedResult {
   result: GtRunResult;
   /** Empty object on success. Populated only on failure. */
   hints: GtHints;
+  /** Non-fatal warnings parsed on success AND failure. */
+  warnings: GtWarnings;
   /** Recovery suggestion derived from hints + auxiliary probes. */
   suggestion?: string;
 }
 
-export function formatResult(r: GtRunResult): FormattedResult {
-  const isFailure = r.exitCode !== 0 || r.timedOut || !!r.spawnError;
+export function formatResult(r: GtRunResult, opts?: FormatOptions): FormattedResult {
+  const hardFailure = r.exitCode !== 0 || r.timedOut || !!r.spawnError;
+  const emptyOutput =
+    !hardFailure && !!opts?.requireStdout && r.stdout.trim() === "";
+  const isFailure = hardFailure || emptyOutput;
+  const hints = isFailure ? parseHints(r) : {};
+  if (emptyOutput) hints.emptyOutput = true;
   return {
     ok: !isFailure,
     isFailure,
     result: r,
-    hints: isFailure ? parseHints(r) : {},
+    hints,
+    warnings: parseWarnings(r),
   };
 }
 
@@ -127,11 +209,24 @@ export function renderText(label: string, f: FormattedResult): string {
     lines.push("--- hints ---");
     lines.push(JSON.stringify(f.hints));
   }
+  if (Object.keys(f.warnings).length) {
+    lines.push("--- warnings ---");
+    lines.push(JSON.stringify(f.warnings));
+    lines.push(
+      "gt reported success but the above conditions were detected in its output. " +
+        "Verify the result (e.g. run graphite_status) before assuming the stack is in the expected state.",
+    );
+  }
   if (f.isFailure && f.suggestion) {
     lines.push("--- suggestion ---");
     lines.push(f.suggestion);
   }
-  return `[${label}] ${f.ok ? "ok" : "fail"}\n${lines.join("\n")}`;
+  const status = f.ok
+    ? Object.keys(f.warnings).length
+      ? "ok (with warnings)"
+      : "ok"
+    : "fail";
+  return `[${label}] ${status}\n${lines.join("\n")}`;
 }
 
 /* ----------------------- auxiliary probes (best-effort) ----------------------- */
@@ -255,6 +350,13 @@ export async function enrichFailure(cwd: string, f: FormattedResult): Promise<vo
       `Operation refused on the trunk branch. Check out a non-trunk branch first with graphite_navigate.`,
     );
   }
+  if (f.hints.emptyOutput) {
+    parts.push(
+      `gt exited 0 but produced no output where output was expected. This usually means the current branch is not tracked by Graphite, you are not in a Graphite-initialized repo, or the gt build short-circuited (do NOT set GRAPHITE_INTERACTIVE). ` +
+        `Confirm with \`git -C <cwd> rev-parse --abbrev-ref HEAD\` and \`gt --version\`, and consider running graphite_setup. ` +
+        `As a fallback you may run a read-only gt command directly (e.g. \`gt log --stack\`) with non-interactive flags.`,
+    );
+  }
 
   if (parts.length) f.suggestion = parts.join(" ");
 }
@@ -268,10 +370,16 @@ export async function ensureSuccess(
   label: string,
   r: GtRunResult,
   cwd: string,
+  opts?: FormatOptions,
 ): Promise<FormattedResult> {
-  const f = formatResult(r);
+  const f = formatResult(r, opts);
   if (f.isFailure) {
     await enrichFailure(cwd, f);
+    if (opts?.mutating) {
+      f.suggestion = f.suggestion
+        ? `${f.suggestion} ${PARTIAL_SIDE_EFFECTS_NOTE}`
+        : PARTIAL_SIDE_EFFECTS_NOTE;
+    }
     throw new Error(renderText(label, f));
   }
   return f;
@@ -283,10 +391,13 @@ export async function ensureSuccess(
  * agent sees the full picture, not just the first error.
  */
 export async function ensureAllSuccess(
-  items: Array<{ label: string; result: GtRunResult }>,
+  items: Array<{ label: string; result: GtRunResult; requireStdout?: boolean }>,
   cwd: string,
 ): Promise<FormattedResult[]> {
-  const formatted = items.map((i) => ({ label: i.label, f: formatResult(i.result) }));
+  const formatted = items.map((i) => ({
+    label: i.label,
+    f: formatResult(i.result, { requireStdout: i.requireStdout }),
+  }));
   const failed = formatted.filter((x) => x.f.isFailure);
   if (failed.length) {
     await Promise.all(failed.map((x) => enrichFailure(cwd, x.f)));

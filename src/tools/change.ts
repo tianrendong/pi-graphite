@@ -130,7 +130,7 @@ export function registerChange(pi: ExtensionAPI) {
       }
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
-      const f = await ensureSuccess(label, r, p.cwd);
+      const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
       return {
         content: [{ type: "text", text: renderText(label, f) }],
         details: { action: p.action, result: f },

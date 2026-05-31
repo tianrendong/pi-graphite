@@ -41,10 +41,13 @@ export const SAFE_NONINTERACTIVE_ENV: Record<string, string> = {
   LESS: "FRX",
   BROWSER: "true",
   GH_BROWSER: "true",
-  // gt-gh treats this as "invoked from Graphite Interactive" and forces
-  // non-interactive behavior regardless of argv. Other gt builds should
-  // ignore it if unsupported; keep --no-interactive argv guards too.
-  GRAPHITE_INTERACTIVE: "1",
+  // NOTE: we intentionally do NOT set GRAPHITE_INTERACTIVE here. Some gt
+  // builds treat GRAPHITE_INTERACTIVE=1 as "invoked from Graphite Interactive"
+  // and short-circuit read commands (`gt log --stack`, `gt info`) to exit 0
+  // with EMPTY stdout — which made this extension blind while reporting
+  // success. Non-interactive behavior is already enforced via the
+  // --no-interactive argv guards in runGt() plus the editor/pager/browser
+  // overrides above.
 };
 
 export function safeNoninteractiveEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {

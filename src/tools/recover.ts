@@ -82,16 +82,17 @@ export function registerRecover(pi: ExtensionAPI) {
     name: "graphite_recover",
     label: "Graphite: recover",
     description:
-      "Recover from a halted Graphite operation or a recent mistake: continue (resume a paused gt command after resolving conflicts), abort (cancel the in-flight operation), or undo (revert the most recent gt mutation in this worktree). Always prefer this over `git rebase --continue`.",
+      "Recover or repair Graphite stack state: continue (resume a paused gt command after resolving conflicts), abort (cancel the in-flight operation), undo (revert the most recent gt mutation in this worktree), or restack (rebase the current stack so each branch sits on its parent's latest commit). Always prefer this over `git rebase --continue`.",
     promptSnippet:
-      "graphite_recover: continue / abort / undo — never use `git rebase --continue`",
+      "graphite_recover: continue / abort / undo / restack — never use `git rebase --continue`",
     promptGuidelines: [
       "After resolving a rebase or cherry-pick conflict from a gt command, call graphite_recover action=continue (not `git rebase --continue`) so Graphite propagates the fix to dependent branches.",
       "graphite_recover action=undo only undoes commands run from the current worktree.",
+      "Use graphite_recover action=restack when graphite_status reports branches out of date with their parent but no remote pull is needed; use graphite_sync when trunk itself may have moved.",
     ],
     parameters: Type.Object({
       cwd: CwdParam,
-      action: StringEnum(["continue", "abort", "undo"] as const),
+      action: StringEnum(["continue", "abort", "undo", "restack"] as const),
       stageAll: Type.Optional(
         Type.Boolean({
           description: "action=continue: stage all changes first (--all).",
@@ -135,10 +136,13 @@ export function registerRecover(pi: ExtensionAPI) {
           args = ["undo"];
           if (p.force) args.push("--force");
           break;
+        case "restack":
+          args = ["restack"];
+          break;
       }
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
-      const f = await ensureSuccess(label, r, p.cwd);
+      const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
       return {
         content: [{ type: "text", text: renderText(label, f) }],
         details: { action: p.action, result: f },

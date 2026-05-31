@@ -33,8 +33,8 @@ export function registerStatus(pi: ExtensionAPI) {
       ]);
       const [fl, fi] = await ensureAllSuccess(
         [
-          { label: "gt log --stack", result: log },
-          { label: "gt info", result: info },
+          { label: "gt log --stack", result: log, requireStdout: true },
+          { label: "gt info", result: info, requireStdout: true },
         ],
         p.cwd,
       );

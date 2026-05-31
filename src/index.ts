@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerStatus } from "./tools/status";
 import { registerSetup } from "./tools/setup";
 import { registerSync } from "./tools/sync";
+import { registerGet } from "./tools/get";
 import { registerNavigate } from "./tools/navigate";
 import { registerChange } from "./tools/change";
 import { registerSubmit } from "./tools/submit";
@@ -11,15 +12,16 @@ import { registerRecover } from "./tools/recover";
 /**
  * pi-graphite — opinionated `gt` wrapper for stacked PR workflows.
  *
- * Seven workflow tools, one correct path:
+ * Workflow tools, one correct path:
  *
  *   graphite_status        — see where you are in the stack
  *   graphite_setup         — init repo / track existing branch when needed
  *   graphite_sync          — start-of-day / after-merge cleanup + restack
+ *   graphite_get           — pull a branch / stack from the remote
  *   graphite_navigate      — move to the branch / PR you want to mutate
  *   graphite_change        — create or amend a stacked branch
  *   graphite_submit  — push the whole stack and open/update PRs
- *   graphite_recover       — continue / abort / undo after conflicts or mistakes
+ *   graphite_recover       — continue / abort / undo / restack
  *
  * Golden path:
  *
@@ -45,6 +47,7 @@ export default function (pi: ExtensionAPI) {
   registerStatus(pi);
   registerSetup(pi);
   registerSync(pi);
+  registerGet(pi);
   registerNavigate(pi);
   registerChange(pi);
   registerSubmit(pi);

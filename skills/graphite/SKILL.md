@@ -26,26 +26,46 @@ Do not use it for:
   dedicated `gh` tool/extension; see the `gh` rule below
 - reading PR review comments or CI status — same
 - rewriting history beyond create/amend (split / fold / move / squash /
-  reorder). The extension does not expose stack surgery. Do not invoke
-  `gt` directly from bash for these — those subcommands prompt
-  interactively (base selectors, hunk pickers, editors) and will hang.
-  Ask the user to run them manually in their own terminal.
+  reorder). The extension does not expose stack surgery, and those
+  subcommands prompt interactively (base selectors, hunk pickers, editors)
+  and will hang. Ask the user to run them in their own terminal.
 
 ## Tools
 
-The extension registers seven tools. Prefer them over `gt`/`git`/`gh` in bash.
+The extension registers these tools. Prefer them over `gt`/`git`/`gh` in bash.
 
 | Tool | Purpose |
 |---|---|
 | `graphite_status` | Read-only snapshot: current stack + current branch + PR + restack hint |
 | `graphite_setup` | Initialize Graphite or track an existing Git branch with explicit parent |
 | `graphite_sync` | `gt sync` — pull trunk, drop merged branches, restack |
+| `graphite_get` | `gt get <branch>` — pull a branch / stack from the remote |
 | `graphite_navigate` | `gt checkout` / `up` / `down` / `top` / `bottom` / trunk |
 | `graphite_change` | `gt create` / `gt modify` / `gt modify --into` / `gt absorb` |
 | `graphite_submit` | `gt submit --stack --no-edit` (dry-run by default) |
-| `graphite_recover` | `gt continue` / `gt abort` / `gt undo` |
+| `graphite_recover` | `gt continue` / `gt abort` / `gt undo` / `gt restack` |
 
 All tools require an absolute `cwd`.
+
+## Reading tool output (don't trust a bare "ok")
+
+Each result starts with `[<label>] ok | ok (with warnings) | fail`. Read past
+the status line:
+
+- **`fail`** — read the `--- hints ---` and `--- suggestion ---` blocks; they
+  tell you exactly which recovery tool to call.
+- **`ok (with warnings)`** — gt exited 0 but its output mentioned skipped /
+  remotely-changed / already-merged branches or a needed restack. Treat this
+  as "succeeded but verify": run `graphite_status` before assuming the stack
+  is in the expected shape.
+- **`emptyOutput` hint on a status call** — gt returned nothing where output
+  was expected. Usually means the branch is untracked, the repo is not
+  Graphite-initialized, or the gt build short-circuited. Follow the
+  suggestion (often `graphite_setup`), and you may run a **read-only** gt
+  command directly to confirm (see the direct-`gt` rule).
+- After a **failed mutating** command (change / submit apply / sync / get /
+  recover / setup) the suggestion warns "partial side effects possible".
+  Always run `graphite_status` to see the real state before retrying.
 
 ## Golden path
 
@@ -179,6 +199,34 @@ graphite_status({ cwd })
 
 If `gt sync` halts on conflict, use the conflict recipe below.
 
+### Restack without pulling from remote
+
+When `graphite_status` shows branches out of date with their parent but trunk
+has not moved (no remote pull needed), restack directly:
+
+```
+graphite_recover({ cwd, action: "restack" })
+graphite_status({ cwd })
+```
+
+Use `graphite_sync` instead when trunk itself may have advanced on the remote.
+If restack halts on a conflict, follow the conflict recipe.
+
+### Pull a branch / stack from the remote
+
+To check out a teammate's branch, or re-pull a branch that changed remotely:
+
+```
+graphite_get({ cwd, branch: "<branch>" })
+graphite_status({ cwd })
+```
+
+If local commits should be overwritten by the remote version:
+
+```
+graphite_get({ cwd, branch: "<branch>", force: true, confirmDestructive: true })
+```
+
 ### Resolve a conflict
 
 1. Read the failing tool's `--- stderr ---` and `hints` block.
@@ -210,8 +258,12 @@ graphite_recover({ cwd, action: "undo" })
   use `graphite_change action="create"` instead.
 - **Never guess tracking parent.** `track_branch` requires explicit branch,
   explicit parent, and `confirmParent:true`.
-- **Prefer `graphite_sync` over manual restack.** The extension does not
-  expose a standalone restack tool. Sync covers both pull + restack.
+- **Restack vs sync.** Use `graphite_recover action="restack"` to rebase the
+  stack onto each parent's latest commit when no remote pull is needed. Use
+  `graphite_sync` when trunk may have advanced remotely (it pulls + restacks).
+- **Pull remote branches with `graphite_get`.** `graphite_sync` only touches
+  trunk + already-tracked local branches; use `graphite_get` to download a
+  branch/stack from the remote.
 - **Always dry-run first.** Show the user the dry-run plan from
   `graphite_submit apply=false` before pushing.
 - **`apply:true` requires `confirmRemote:true`.** The tool will refuse
@@ -225,5 +277,18 @@ graphite_recover({ cwd, action: "undo" })
   available. If you must shell out to `gh` from bash, pass fully explicit
   non-interactive arguments only — never `gh auth login`, `--web`, or any
   command that opens a browser, editor, or prompt.
+- **Direct `gt` is allowed only when no tool covers the command.** The tools
+  above are the default path. If you genuinely need a `gt` subcommand this
+  extension does not expose (and the user has not asked to run it
+  themselves), you may call `gt` from bash, but ONLY with explicit
+  non-interactive flags and never an interactive subcommand:
+  - Always pass `--no-interactive` (and `--cwd <abs>`).
+  - Safe read-only fallbacks: `gt log`, `gt log --stack`, `gt info`,
+    `gt children`, `gt parent`, `gt trunk`, `gt state`.
+  - Never run interactive surgery (`gt split` / `fold` / `move` / `squash` /
+    `reorder`) or anything that opens an editor, pager, hunk picker, or
+    browser — those hang. Ask the user to run those in their own terminal.
+  - Prefer the dedicated tool whenever one exists; direct `gt` skips the
+    safety confirmations, hint parsing, and warning detection the tools add.
 - **No interactive editor / browser / hunk picker.** All paths are
   non-interactive; pass explicit messages.
