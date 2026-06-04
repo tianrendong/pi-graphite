@@ -25,10 +25,14 @@ Do not use it for:
 - editing PR titles / bodies / labels / reviewers metadata — prefer a
   dedicated `gh` tool/extension; see the `gh` rule below
 - reading PR review comments or CI status — same
-- rewriting history beyond create/amend (split / fold / move / squash /
-  reorder). The extension does not expose stack surgery, and those
-  subcommands prompt interactively (base selectors, hunk pickers, editors)
-  and will hang. Ask the user to run them in their own terminal.
+- reparenting a tracked branch onto a different parent — use
+  `graphite_move` (it runs `gt move --source --onto` non-interactively and
+  rebases descendants). Do NOT use `track_branch --force` for this; that only
+  rewrites tracking metadata and leaves commits unrebased.
+- rewriting history beyond create/amend/move (split / fold / squash /
+  reorder). The extension does not expose those, and they prompt
+  interactively (base selectors, hunk pickers, editors) and will hang. Ask
+  the user to run them in their own terminal.
 
 ## Tools
 
@@ -41,6 +45,7 @@ The extension registers these tools. Prefer them over `gt`/`git`/`gh` in bash.
 | `graphite_sync` | `gt sync` — pull trunk, drop merged branches, restack |
 | `graphite_get` | `gt get <branch>` — pull a branch / stack from the remote |
 | `graphite_navigate` | `gt checkout` / `up` / `down` / `top` / `bottom` / trunk |
+| `graphite_move` | `gt move --source --onto` — reparent a tracked branch + restack descendants (dry-run by default) |
 | `graphite_change` | `gt create` / `gt modify` / `gt modify --into` / `gt absorb` |
 | `graphite_submit` | `gt submit --stack --no-edit` (dry-run by default) |
 | `graphite_recover` | `gt continue` / `gt abort` / `gt undo` / `gt restack` |
@@ -212,6 +217,24 @@ graphite_status({ cwd })
 Use `graphite_sync` instead when trunk itself may have advanced on the remote.
 If restack halts on a conflict, follow the conflict recipe.
 
+### Reparent a tracked branch onto a new parent
+
+When an existing tracked branch is stacked on the wrong parent and you need a
+real rebase (not just a metadata fix):
+
+```
+graphite_status({ cwd })                                  # confirm shapes
+graphite_move({ cwd, branch: "<branch>", parent: "<new-parent>" })   # dry-run plan
+# review the plan, then apply:
+graphite_move({ cwd, branch: "<branch>", parent: "<new-parent>", apply: true, confirmDestructive: true })
+```
+
+The move rebases `<branch>` and all of its descendants onto `<new-parent>`.
+If it halts on a conflict, follow the conflict recipe (resolve →
+`graphite_recover action="continue"`). To chain several reparents (e.g.
+rebuild a stack A→B→C), move the lowest branch first, then each next branch
+onto its new parent, running `graphite_status` between steps.
+
 ### Pull a branch / stack from the remote
 
 To check out a teammate's branch, or re-pull a branch that changed remotely:
@@ -261,6 +284,11 @@ graphite_recover({ cwd, action: "undo" })
 - **Restack vs sync.** Use `graphite_recover action="restack"` to rebase the
   stack onto each parent's latest commit when no remote pull is needed. Use
   `graphite_sync` when trunk may have advanced remotely (it pulls + restacks).
+- **Reparent with `graphite_move`, not `track_branch --force`.**
+  `graphite_move` runs `gt move --source --onto`, which rebases commits and
+  restacks descendants. `track_branch --force` only rewrites tracking
+  metadata and leaves the stack in an inconsistent shape. Always dry-run
+  first; `apply:true` requires `confirmDestructive:true`.
 - **Pull remote branches with `graphite_get`.** `graphite_sync` only touches
   trunk + already-tracked local branches; use `graphite_get` to download a
   branch/stack from the remote.

@@ -9,8 +9,10 @@ graphite_status → (graphite_setup if needed) → graphite_sync → graphite_na
 ```
 
 The extension wraps `gt` only. It deliberately does **not** call `gh`, edit
-PR titles/bodies, fetch review comments, or perform stack surgery (split /
-fold / move / squash / reorder). For those flows, run the underlying `gt`
+PR titles/bodies, fetch review comments, or perform interactive stack surgery
+(split / fold / squash / reorder). Reparenting a tracked branch IS supported
+via `graphite_move` (`gt move --source --onto`, non-interactive). For the
+remaining surgery flows, run the underlying `gt`
 or `gh` command yourself in your own terminal; the agent should not invoke
 them from bash, as their defaults open interactive prompts, hunk pickers,
 or editors that will hang non-interactive sessions.
@@ -48,6 +50,7 @@ agent loads it on demand.
 | `graphite_sync`          | Start-of-day / after-merge cleanup + restack                            | `gt sync`                                      |
 | `graphite_get`           | Pull a branch / stack from the remote                                   | `gt get <branch>`                              |
 | `graphite_navigate`      | Move around the stack                                                   | `gt checkout`, `gt up`/`down`/`top`/`bottom`   |
+| `graphite_move`          | Reparent a tracked branch + restack descendants (dry-run by default)    | `gt move --source --onto`                      |
 | `graphite_change`        | Create / amend a stacked branch                                         | `gt create -am`, `gt modify -am`, `gt modify --into`, `gt absorb` |
 | `graphite_submit`  | Push the entire stack and open/update PRs (dry-run by default)          | `gt submit --stack --no-edit --no-ai`          |
 | `graphite_recover`       | Continue / abort / undo / restack                                       | `gt continue`, `gt abort`, `gt undo`, `gt restack` |
