@@ -9,7 +9,7 @@ graphite_status → (graphite_setup if needed) → graphite_sync → graphite_na
 ```
 
 The extension wraps `gt` only. It deliberately does **not** call `gh`, edit
-PR titles/bodies, fetch review comments, or perform interactive stack surgery
+PR titles/bodies, fetch review comments, or expose interactive stack surgery
 (split / fold / squash / reorder). Reparenting a tracked branch IS supported
 via `graphite_move` (`gt move --source --onto`, non-interactive). For the
 remaining surgery flows, run the underlying `gt`
@@ -45,7 +45,7 @@ agent loads it on demand.
 
 | Tool                     | Purpose                                                                 | Wraps                                          |
 | ------------------------ | ----------------------------------------------------------------------- | ---------------------------------------------- |
-| `graphite_status`        | Read-only snapshot: current stack + current branch + PR + restack hints | `gt log --stack`, `gt info`                    |
+| `graphite_status`        | Read-only snapshot: current stack, or targeted branches + bounded topology snippets | `gt log --stack`, `gt info`, `gt info <branch>`, filtered `gt log` |
 | `graphite_setup`         | Initialize Graphite or track an existing Git branch with explicit parent | `gt init --trunk`, `gt track --parent`         |
 | `graphite_sync`          | Start-of-day / after-merge cleanup + restack                            | `gt sync`                                      |
 | `graphite_get`           | Pull a branch / stack from the remote                                   | `gt get <branch>`                              |
@@ -54,6 +54,22 @@ agent loads it on demand.
 | `graphite_change`        | Create / amend a stacked branch                                         | `gt create -am`, `gt modify -am`, `gt modify --into`, `gt absorb` |
 | `graphite_submit`  | Push the entire stack and open/update PRs (dry-run by default)          | `gt submit --stack --no-edit --no-ai`          |
 | `graphite_recover`       | Continue / abort / undo / restack                                       | `gt continue`, `gt abort`, `gt undo`, `gt restack` |
+
+## Targeted status
+
+Default status shows the current stack only:
+
+```text
+graphite_status cwd=/repo
+```
+
+For cross-stack checks, pass explicit branches. This runs `gt info <branch>`
+for each branch and, with `includeTopology:true`, returns bounded snippets
+from `gt log` around those names instead of dumping every tracked branch.
+
+```text
+graphite_status cwd=/repo branches=[feature-a,feature-b] includeTopology=true
+```
 
 ## Golden path
 
@@ -108,9 +124,10 @@ dependent branches.
   misleading "ok".
 - Output is also scanned (on success **and** failure) for non-fatal
   `warnings` (`skippedBranches`, `remoteChanged`, `alreadyMerged`,
-  `needsRestack`). A result with warnings is reported as `ok (with warnings)`
-  so a `gt sync` / `gt submit` that silently skipped work is not mistaken for
-  a clean success.
+  `needsRestack`). `skippedBranches` only detects skipped branch work; prompt
+  skip messages from non-interactive submit are ignored. A result with
+  warnings is reported as `ok (with warnings)` so a `gt sync` / `gt submit`
+  that silently skipped work is not mistaken for a clean success.
 - A **mutating** command that fails appends a "partial side effects possible"
   note, prompting a follow-up `graphite_status`.
 

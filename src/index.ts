@@ -20,7 +20,7 @@ import { registerRecover } from "./tools/recover";
  *   graphite_sync          — start-of-day / after-merge cleanup + restack
  *   graphite_get           — pull a branch / stack from the remote
  *   graphite_navigate      — move to the branch / PR you want to mutate
- *   graphite_move          — reparent an existing tracked branch (stack surgery)
+ *   graphite_move          — reparent an existing tracked branch (non-interactive move)
  *   graphite_change        — create or amend a stacked branch
  *   graphite_submit  — push the whole stack and open/update PRs
  *   graphite_recover       — continue / abort / undo / restack
@@ -42,7 +42,7 @@ import { registerRecover } from "./tools/recover";
  *   `apply:true` AND `confirmRemote:true`.
  * - graphite_sync with force / deleteAll requires `confirmDestructive:true`.
  * - This extension wraps `gt` only. It deliberately does not call `gh`,
- *   touch PR titles/bodies, run reviews, or do interactive stack surgery
+ *   touch PR titles/bodies, run reviews, or expose interactive stack surgery
  *   (split/fold/squash/reorder). Reparenting via `gt move` IS exposed
  *   (graphite_move) because it is non-interactive with explicit
  *   --source/--onto. Use the gt CLI or another tool for the rest.

@@ -1,6 +1,6 @@
 ---
 name: graphite
-description: Manage stacked PRs with the Graphite (gt) CLI via the pi-graphite extension. Use when creating, updating, navigating, or pushing a Graphite stack, or when recovering from a halted gt command. Wraps `gt` only — does not touch PR titles/bodies, reviews, or stack surgery.
+description: Manage stacked PRs with the Graphite (gt) CLI via the pi-graphite extension. Use when creating, updating, navigating, reparenting, or pushing a Graphite stack, or when recovering from a halted gt command. Wraps `gt` only — does not touch PR titles/bodies/reviews and does not expose interactive stack surgery.
 ---
 
 # Graphite (pi-graphite)
@@ -19,16 +19,14 @@ Use this skill whenever the user wants to:
 - push the current stack to GitHub
 - sync after PRs merged on `main`
 - recover from a gt conflict
+- reparent a tracked branch onto a different parent via `graphite_move`
+  (`gt move --source --onto`, non-interactive; rebases descendants)
 
 Do not use it for:
 
 - editing PR titles / bodies / labels / reviewers metadata — prefer a
   dedicated `gh` tool/extension; see the `gh` rule below
 - reading PR review comments or CI status — same
-- reparenting a tracked branch onto a different parent — use
-  `graphite_move` (it runs `gt move --source --onto` non-interactively and
-  rebases descendants). Do NOT use `track_branch --force` for this; that only
-  rewrites tracking metadata and leaves commits unrebased.
 - rewriting history beyond create/amend/move (split / fold / squash /
   reorder). The extension does not expose those, and they prompt
   interactively (base selectors, hunk pickers, editors) and will hang. Ask
@@ -40,7 +38,7 @@ The extension registers these tools. Prefer them over `gt`/`git`/`gh` in bash.
 
 | Tool | Purpose |
 |---|---|
-| `graphite_status` | Read-only snapshot: current stack + current branch + PR + restack hint |
+| `graphite_status` | Read-only snapshot: current stack, or targeted branch status + bounded topology snippets |
 | `graphite_setup` | Initialize Graphite or track an existing Git branch with explicit parent |
 | `graphite_sync` | `gt sync` — pull trunk, drop merged branches, restack |
 | `graphite_get` | `gt get <branch>` — pull a branch / stack from the remote |
@@ -59,10 +57,11 @@ the status line:
 
 - **`fail`** — read the `--- hints ---` and `--- suggestion ---` blocks; they
   tell you exactly which recovery tool to call.
-- **`ok (with warnings)`** — gt exited 0 but its output mentioned skipped /
-  remotely-changed / already-merged branches or a needed restack. Treat this
-  as "succeeded but verify": run `graphite_status` before assuming the stack
-  is in the expected shape.
+- **`ok (with warnings)`** — gt exited 0 but its output mentioned skipped
+  branch work, remotely-changed / already-merged branches, or a needed
+  restack. Treat this as "succeeded but verify": run `graphite_status` before
+  assuming the stack is in the expected shape. Prompt-skip messages from
+  non-interactive submit are ignored.
 - **`emptyOutput` hint on a status call** — gt returned nothing where output
   was expected. Usually means the branch is untracked, the repo is not
   Graphite-initialized, or the gt build short-circuited. Follow the
@@ -223,17 +222,18 @@ When an existing tracked branch is stacked on the wrong parent and you need a
 real rebase (not just a metadata fix):
 
 ```
-graphite_status({ cwd })                                  # confirm shapes
-graphite_move({ cwd, branch: "<branch>", parent: "<new-parent>" })   # dry-run plan
+graphite_status({ cwd, branches: ["<branch>", "<new-parent>"], includeTopology: true })  # targeted shape check
+graphite_move({ cwd, branch: "<branch>", parent: "<new-parent>" })   # dry-run plan + targeted topology snippets
 # review the plan, then apply:
 graphite_move({ cwd, branch: "<branch>", parent: "<new-parent>", apply: true, confirmDestructive: true })
 ```
 
 The move rebases `<branch>` and all of its descendants onto `<new-parent>`.
-If it halts on a conflict, follow the conflict recipe (resolve →
+Dry-run shows targeted preflight context; exact final topology is confirmed
+post-apply. If it halts on a conflict, follow the conflict recipe (resolve →
 `graphite_recover action="continue"`). To chain several reparents (e.g.
 rebuild a stack A→B→C), move the lowest branch first, then each next branch
-onto its new parent, running `graphite_status` between steps.
+onto its new parent, running targeted `graphite_status` between steps.
 
 ### Pull a branch / stack from the remote
 
@@ -288,7 +288,9 @@ graphite_recover({ cwd, action: "undo" })
   `graphite_move` runs `gt move --source --onto`, which rebases commits and
   restacks descendants. `track_branch --force` only rewrites tracking
   metadata and leaves the stack in an inconsistent shape. Always dry-run
-  first; `apply:true` requires `confirmDestructive:true`.
+  first; `apply:true` requires `confirmDestructive:true`. For cross-stack
+  checks, use `graphite_status({ branches: [...], includeTopology: true })`
+  to get bounded snippets instead of dumping every stack.
 - **Pull remote branches with `graphite_get`.** `graphite_sync` only touches
   trunk + already-tracked local branches; use `graphite_get` to download a
   branch/stack from the remote.
@@ -313,9 +315,11 @@ graphite_recover({ cwd, action: "undo" })
   - Always pass `--no-interactive` (and `--cwd <abs>`).
   - Safe read-only fallbacks: `gt log`, `gt log --stack`, `gt info`,
     `gt children`, `gt parent`, `gt trunk`, `gt state`.
-  - Never run interactive surgery (`gt split` / `fold` / `move` / `squash` /
+  - Never run interactive surgery (`gt split` / `fold` / `squash` /
     `reorder`) or anything that opens an editor, pager, hunk picker, or
-    browser — those hang. Ask the user to run those in their own terminal.
+    browser — those hang. Use `graphite_move` for non-interactive reparenting
+    via explicit `--source` / `--onto`; ask the user to run other surgery in
+    their own terminal.
   - Prefer the dedicated tool whenever one exists; direct `gt` skips the
     safety confirmations, hint parsing, and warning detection the tools add.
 - **No interactive editor / browser / hunk picker.** All paths are

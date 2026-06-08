@@ -37,15 +37,34 @@ export interface GtWarnings {
 }
 
 const WARNING_PATTERNS: Array<[keyof GtWarnings, RegExp]> = [
-  ["skippedBranches", /\bskipp(?:ing|ed)\b/i],
+  [
+    "skippedBranches",
+    /\b(?:skipp(?:ing|ed)\s+(?:branch(?:es)?\b|[^\n]*\bbranch\b)|branches?\s+(?:were\s+)?skipped|skipped\s+\d+\s+branches?)\b/i,
+  ],
   ["remoteChanged", /updated\s+remotely|changed\s+on\s+remote|newer\s+(?:commit|version)\s+(?:on|exists)|diverged\s+from\s+remote/i],
   ["alreadyMerged", /already\s+(?:been\s+)?merged|has\s+been\s+merged|closed\s+remotely/i],
   // Negative lookbehind avoids matching "does not need to be restacked".
   ["needsRestack", /(?<!not\s)needs?\s+(?:to\s+be\s+)?restack|run\s+`?gt\s+restack`?|out\s+of\s+date\s+with\s+(?:its\s+)?parent/i],
 ];
 
+function stripNonWarningPromptSkips(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => {
+      // `gt submit --no-edit --no-interactive` can report skipped inline
+      // prompts. That is expected non-interactive behavior, not skipped
+      // branch work. Drop those lines before warning detection.
+      if (/(?:inline\s+)?prompts?.*\bskipp(?:ed|ing)\b/i.test(line)) return false;
+      if (/\bskipp(?:ed|ing)\b.*(?:inline\s+)?prompts?/i.test(line)) return false;
+      if (/\bskipp(?:ed|ing)\b.*\bprompt(?:s)?\b/i.test(line)) return false;
+      return true;
+    })
+    .join("\n");
+}
+
 function parseWarnings(r: GtRunResult): GtWarnings {
-  const text = `${r.stdout}\n${r.stderr}`;
+  const rawText = `${r.stdout}\n${r.stderr}`;
+  const text = stripNonWarningPromptSkips(rawText);
   const w: GtWarnings = {};
   // A help/usage dump is full of command descriptions, not real warnings.
   if (looksLikeUsageDump(text)) return w;

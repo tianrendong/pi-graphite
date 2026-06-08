@@ -1,11 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
 import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
-import {
-  ensureAllSuccess,
-  ensureSuccess,
-  renderText,
-} from "../lib/result";
+import { ensureSuccess, renderText } from "../lib/result";
+import { buildTargetedStatus } from "./status";
 import {
   CwdParam,
   Type,
@@ -31,8 +28,9 @@ import {
  *   5. Conflicts surface as a failure with a conflictHalted hint, routing the
  *      agent to graphite_recover continue/abort.
  *   6. apply:true requires confirmDestructive:true.
- *   7. On a successful apply, the resulting stack is shown (gt log --stack +
- *      gt info) so the new shape is visible without a second call.
+ *   7. Dry-run/apply output shows targeted branch + parent status, with
+ *      bounded topology snippets so cross-stack verification does not dump
+ *      every tracked branch.
  */
 export function registerMove(pi: ExtensionAPI) {
   pi.registerTool({
@@ -76,12 +74,13 @@ export function registerMove(pi: ExtensionAPI) {
 
       const apply = p.apply === true;
 
-      // --- dry-run: show current stack + the planned operation, no mutation.
+      // --- dry-run: show targeted preflight + planned operation, no mutation.
       if (!apply) {
-        const log = await runGt(["log", "--stack"], { cwd: p.cwd, signal });
-        const [fl] = await ensureAllSuccess(
-          [{ label: "gt log --stack", result: log, requireStdout: true }],
+        const targeted = await buildTargetedStatus(
           p.cwd,
+          [branch, parent],
+          signal,
+          { includeTopology: true },
         );
         const planned = `gt ${shellJoin([
           "move",
@@ -95,15 +94,16 @@ export function registerMove(pi: ExtensionAPI) {
           `This will rebase ${branch} and ALL of its descendants onto ${parent}.`,
           `Command that would run: ${planned}`,
           ``,
+          `Exact final topology is only known after apply; this dry-run shows targeted preflight context.`,
           `To apply: call graphite_move again with apply:true and confirmDestructive:true.`,
           `If it halts on a conflict, resolve files then graphite_recover action="continue".`,
           ``,
-          `--- current stack ---`,
-          renderText("gt log --stack", fl),
+          `--- targeted preflight status ---`,
+          targeted.text,
         ].join("\n");
         return {
           content: [{ type: "text", text: plan }],
-          details: { apply: false, branch, parent, log: fl },
+          details: { apply: false, branch, parent, targeted: targeted.details },
         };
       }
 
@@ -122,17 +122,12 @@ export function registerMove(pi: ExtensionAPI) {
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
 
-      // Requirement 7: show the resulting stack after a successful move.
-      const [log, info] = await Promise.all([
-        runGt(["log", "--stack"], { cwd: p.cwd, signal }),
-        runGt(["info"], { cwd: p.cwd, signal }),
-      ]);
-      const [fl, fi] = await ensureAllSuccess(
-        [
-          { label: "gt log --stack", result: log, requireStdout: true },
-          { label: "gt info", result: info, requireStdout: true },
-        ],
+      // Show targeted post-apply status without dumping every tracked branch.
+      const targeted = await buildTargetedStatus(
         p.cwd,
+        [branch, parent],
+        signal,
+        { includeTopology: true },
       );
 
       return {
@@ -142,13 +137,12 @@ export function registerMove(pi: ExtensionAPI) {
             text: [
               renderText(label, f),
               ``,
-              `--- stack after move ---`,
-              renderText("gt log --stack", fl),
-              renderText("gt info", fi),
+              `--- targeted status after move ---`,
+              targeted.text,
             ].join("\n"),
           },
         ],
-        details: { apply: true, branch, parent, result: f, log: fl, info: fi },
+        details: { apply: true, branch, parent, result: f, targeted: targeted.details },
       };
     },
   });
