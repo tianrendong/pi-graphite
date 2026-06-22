@@ -8,18 +8,20 @@ graphite_status → (graphite_setup if needed) → graphite_sync → graphite_na
        → graphite_change → graphite_submit (dry-run) → graphite_submit (apply)
 ```
 
-The extension wraps `gt` only. It deliberately does **not** call `gh`, edit
-PR titles/bodies, fetch review comments, or expose interactive stack surgery
-(split / fold / squash / reorder). Reparenting a tracked branch IS supported
-via `graphite_move` (`gt move --source --onto`, non-interactive). For the
-remaining surgery flows, run the underlying `gt`
-or `gh` command yourself in your own terminal; the agent should not invoke
-them from bash, as their defaults open interactive prompts, hunk pickers,
-or editors that will hang non-interactive sessions.
+The extension wraps `gt` for stack operations. Submit also uses explicit,
+non-interactive `gh pr view/edit --body-file` calls to enforce PR descriptions.
+It deliberately does **not** edit PR titles, fetch review comments, or expose
+interactive stack surgery (split / fold / squash / reorder). Reparenting a
+tracked branch IS supported via `graphite_move` (`gt move --source --onto`,
+non-interactive). For the remaining surgery flows, run the underlying `gt` or
+`gh` command yourself in your own terminal; the agent should not invoke them
+from bash, as their defaults open interactive prompts, hunk pickers, or editors
+that will hang non-interactive sessions.
 
 ## Requirements
 
 - `gt` CLI installed and authenticated (`gt auth`).
+- `gh` CLI installed and authenticated for PR body inspection/editing.
 - A pi runtime that loads npm or local pi packages.
 
 ## Install
@@ -52,7 +54,7 @@ agent loads it on demand.
 | `graphite_navigate`      | Move around the stack                                                   | `gt checkout`, `gt up`/`down`/`top`/`bottom`   |
 | `graphite_move`          | Reparent a tracked branch + restack descendants (dry-run by default)    | `gt move --source --onto`                      |
 | `graphite_change`        | Create / amend a stacked branch                                         | `gt create -am`, `gt modify -am`, `gt modify --into`, `gt absorb` |
-| `graphite_submit`  | Push the entire stack and open/update PRs (dry-run by default)          | `gt submit --stack --no-edit --no-ai`          |
+| `graphite_submit`  | Push the entire stack, open/update PRs, and enforce descriptions (dry-run by default) | `gt submit --stack --no-edit --no-ai` + `gh pr edit --body-file` |
 | `graphite_recover`       | Continue / abort / undo / restack                                       | `gt continue`, `gt abort`, `gt undo`, `gt restack` |
 
 ## Targeted status
@@ -80,8 +82,8 @@ graphite_sync                                # at session start, or after merges
 graphite_navigate action=checkout branch=…   # move to the target PR / parent
 # user edits files
 graphite_change action=create message="…"     # or action=amend
-graphite_submit apply=false             # review the dry-run plan
-graphite_submit apply=true confirmRemote=true
+graphite_submit apply=false             # review plan + required descriptions
+graphite_submit apply=true confirmRemote=true descriptions=[{branch:"feature", body:"..."}]
 ```
 
 Conflict path:
@@ -110,6 +112,10 @@ dependent branches.
 - `graphite_setup action=init_repo reset:true` needs `confirmDestructive:true`.
 - `graphite_submit` defaults to `--dry-run`; `apply:true` also needs
   `confirmRemote:true`. `--force` push also requires `confirmRemote:true`.
+  Before remote mutation, apply mode inspects the current stack with `gh pr view`
+  and refuses if any new PR branch (or existing empty PR body) lacks a
+  non-empty `descriptions:[{branch, body}]` entry. After `gt submit`, it writes
+  supplied bodies with `gh pr edit --body-file` and verifies the body is non-empty.
 - `graphite_sync` with `force` or `deleteAll` needs `confirmDestructive:true`.
 - `graphite_recover action=continue` refuses to proceed if tracked files
   still contain `<<<<<<<` markers, unless `allowConflictMarkers:true`.

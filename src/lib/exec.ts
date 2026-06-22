@@ -116,31 +116,16 @@ const FORBIDDEN_RAW_TOKENS = new Set<string>([
  * - Refuses to run if rawArgs contains a known interactive-toggle token.
  * - Does not inject --quiet (we want stderr diagnostics).
  */
-export async function runGt(
-  rawArgs: string[],
+async function runCommand(
+  command: "gt" | "gh",
+  args: string[],
   opts: GtRunOptions,
 ): Promise<GtRunResult> {
   const cwd = resolvePath(opts.cwd);
-  for (const tok of rawArgs) {
-    // Match both `--interactive` and `--interactive=...` forms.
-    const head = tok.split("=", 1)[0];
-    if (FORBIDDEN_RAW_TOKENS.has(head)) {
-      throw new Error(
-        `runGt: refused to pass forbidden token ${JSON.stringify(tok)} to gt. ` +
-          `Interactive flows are disabled in this extension.`,
-      );
-    }
-  }
-  const args = ["--cwd", cwd, "--no-interactive"];
-  args.push(...rawArgs);
-  // Trailing --no-interactive wins against any later `--interactive` that
-  // might still slip in via an unaudited code path.
-  args.push("--no-interactive");
-
   return new Promise<GtRunResult>((resolve) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
     try {
-      child = spawn("gt", args, {
+      child = spawn(command, args, {
         cwd,
         // Force any editor/pager/browser invocation to no-op instead of
         // hanging. Safety vars override opts.env by design.
@@ -150,7 +135,7 @@ export async function runGt(
       });
     } catch (e) {
       resolve({
-        command: "gt",
+        command,
         args,
         cwd,
         exitCode: -1,
@@ -194,7 +179,7 @@ export async function runGt(
       clearTimeout(timeout);
       opts.signal?.removeEventListener("abort", onAbort);
       resolve({
-        command: "gt",
+        command,
         args,
         cwd,
         exitCode: -1,
@@ -211,7 +196,7 @@ export async function runGt(
       clearTimeout(timeout);
       opts.signal?.removeEventListener("abort", onAbort);
       resolve({
-        command: "gt",
+        command,
         args,
         cwd,
         exitCode: code ?? -1,
@@ -221,4 +206,44 @@ export async function runGt(
       });
     });
   });
+}
+
+export async function runGt(
+  rawArgs: string[],
+  opts: GtRunOptions,
+): Promise<GtRunResult> {
+  const cwd = resolvePath(opts.cwd);
+  for (const tok of rawArgs) {
+    // Match both `--interactive` and `--interactive=...` forms.
+    const head = tok.split("=", 1)[0];
+    if (FORBIDDEN_RAW_TOKENS.has(head)) {
+      throw new Error(
+        `runGt: refused to pass forbidden token ${JSON.stringify(tok)} to gt. ` +
+          `Interactive flows are disabled in this extension.`,
+      );
+    }
+  }
+  const args = ["--cwd", cwd, "--no-interactive"];
+  args.push(...rawArgs);
+  // Trailing --no-interactive wins against any later `--interactive` that
+  // might still slip in via an unaudited code path.
+  args.push("--no-interactive");
+
+  return runCommand("gt", args, { ...opts, cwd });
+}
+
+export async function runGh(
+  rawArgs: string[],
+  opts: GtRunOptions,
+): Promise<GtRunResult> {
+  const cwd = resolvePath(opts.cwd);
+  for (const tok of rawArgs) {
+    if (tok === "--web" || tok.startsWith("--web=")) {
+      throw new Error(
+        `runGh: refused to pass forbidden token ${JSON.stringify(tok)} to gh. ` +
+          `Browser flows are disabled in this extension.`,
+      );
+    }
+  }
+  return runCommand("gh", rawArgs, { ...opts, cwd });
 }

@@ -22,7 +22,7 @@ import { registerRecover } from "./tools/recover";
  *   graphite_navigate      — move to the branch / PR you want to mutate
  *   graphite_move          — reparent an existing tracked branch (non-interactive move)
  *   graphite_change        — create or amend a stacked branch
- *   graphite_submit  — push the whole stack and open/update PRs
+ *   graphite_submit  — push the whole stack, open/update PRs, enforce descriptions
  *   graphite_recover       — continue / abort / undo / restack
  *
  * Golden path:
@@ -39,12 +39,13 @@ import { registerRecover } from "./tools/recover";
  * - Editor / pager / browser env is forced safe; interactive editor / hunk /
  *   browser flows are not exposed.
  * - graphite_submit defaults to --dry-run; apply requires
- *   `apply:true` AND `confirmRemote:true`.
+ *   `apply:true`, `confirmRemote:true`, and descriptions for new/empty PRs.
  * - graphite_sync with force / deleteAll requires `confirmDestructive:true`.
- * - This extension wraps `gt` only. It deliberately does not call `gh`,
- *   touch PR titles/bodies, run reviews, or expose interactive stack surgery
- *   (split/fold/squash/reorder). Reparenting via `gt move` IS exposed
- *   (graphite_move) because it is non-interactive with explicit
+ * - This extension wraps `gt` for stack operations. Submit also uses explicit
+ *   non-interactive `gh pr view/edit --body-file` to enforce PR descriptions.
+ *   It deliberately does not touch PR titles/reviews or expose interactive
+ *   stack surgery (split/fold/squash/reorder). Reparenting via `gt move` IS
+ *   exposed (graphite_move) because it is non-interactive with explicit
  *   --source/--onto. Use the gt CLI or another tool for the rest.
  */
 export default function (pi: ExtensionAPI) {

@@ -1,13 +1,15 @@
 ---
 name: graphite
-description: Manage stacked PRs with the Graphite (gt) CLI via the pi-graphite extension. Use when creating, updating, navigating, reparenting, or pushing a Graphite stack, or when recovering from a halted gt command. Wraps `gt` only — does not touch PR titles/bodies/reviews and does not expose interactive stack surgery.
+description: Manage stacked PRs with the Graphite (gt) CLI via the pi-graphite extension. Use when creating, updating, navigating, reparenting, or pushing a Graphite stack, or when recovering from a halted gt command. Wraps `gt` for stack operations and enforces PR descriptions during submit via non-interactive `gh`; does not touch PR titles/reviews or expose interactive stack surgery.
 ---
 
 # Graphite (pi-graphite)
 
 This skill drives the [pi-graphite](https://www.npmjs.com/package/pi-graphite)
 extension. The extension is a deliberately small, opinionated wrapper around
-the Graphite (`gt`) CLI. There is exactly one correct workflow; follow it.
+the Graphite (`gt`) CLI. Submit also requires authenticated `gh` so PR bodies
+can be inspected and edited non-interactively. There is exactly one correct
+workflow; follow it.
 
 ## When to use
 
@@ -24,8 +26,9 @@ Use this skill whenever the user wants to:
 
 Do not use it for:
 
-- editing PR titles / bodies / labels / reviewers metadata — prefer a
-  dedicated `gh` tool/extension; see the `gh` rule below
+- editing PR titles / labels / reviewers metadata — prefer a dedicated `gh`
+  tool/extension; see the `gh` rule below. PR bodies are handled only by
+  `graphite_submit` via explicit `descriptions:[{branch, body}]`.
 - reading PR review comments or CI status — same
 - rewriting history beyond create/amend/move (split / fold / squash /
   reorder). The extension does not expose those, and they prompt
@@ -45,7 +48,7 @@ The extension registers these tools. Prefer them over `gt`/`git`/`gh` in bash.
 | `graphite_navigate` | `gt checkout` / `up` / `down` / `top` / `bottom` / trunk |
 | `graphite_move` | `gt move --source --onto` — reparent a tracked branch + restack descendants (dry-run by default) |
 | `graphite_change` | `gt create` / `gt modify` / `gt modify --into` / `gt absorb` |
-| `graphite_submit` | `gt submit --stack --no-edit` (dry-run by default) |
+| `graphite_submit` | `gt submit --stack --no-edit` (dry-run by default) + required PR descriptions via `gh pr edit --body-file` |
 | `graphite_recover` | `gt continue` / `gt abort` / `gt undo` / `gt restack` |
 
 All tools require an absolute `cwd`.
@@ -84,10 +87,10 @@ graphite_navigate                   (move to the branch you want to mutate)
      ↓
 graphite_change                     (create or amend)
      ↓
-graphite_submit apply=false   (review dry-run plan)
+graphite_submit apply=false   (review dry-run plan + required descriptions)
      ↓
-graphite_submit apply=true    (push, with confirmRemote=true)
-   confirmRemote=true
+graphite_submit apply=true    (push, with confirmRemote=true + descriptions)
+   confirmRemote=true descriptions=[{branch:"<branch>", body:"..."}]
 ```
 
 When a `gt` command halts on conflict:
@@ -154,8 +157,13 @@ graphite_status({ cwd })                     # confirm position
 # ... user makes code changes ...
 graphite_change({ cwd, action: "create", message: "..." })
 graphite_submit({ cwd, apply: false })
-# review plan with user; then:
-graphite_submit({ cwd, apply: true, confirmRemote: true })
+# review plan + required descriptions with user; then:
+graphite_submit({
+  cwd,
+  apply: true,
+  confirmRemote: true,
+  descriptions: [{ branch: "<branch>", body: "## Summary\n...\n\n## Test plan\n..." }],
+})
 ```
 
 ### Update an existing PR
@@ -166,7 +174,12 @@ graphite_navigate({ cwd, action: "checkout", branch: "<pr-branch>" })
 # ... user makes code changes ...
 graphite_change({ cwd, action: "amend", message: "..." })
 graphite_submit({ cwd, apply: false })
-graphite_submit({ cwd, apply: true, confirmRemote: true })
+graphite_submit({
+  cwd,
+  apply: true,
+  confirmRemote: true,
+  descriptions: [{ branch: "<pr-branch>", body: "## Summary\n...\n\n## Test plan\n..." }],
+})
 ```
 
 ### Add a child PR off a specific parent
@@ -296,17 +309,24 @@ graphite_recover({ cwd, action: "undo" })
   branch/stack from the remote.
 - **Always dry-run first.** Show the user the dry-run plan from
   `graphite_submit apply=false` before pushing.
-- **`apply:true` requires `confirmRemote:true`.** The tool will refuse
-  otherwise. This is intentional friction.
+- **`apply:true` requires `confirmRemote:true` and PR descriptions.** The tool
+  inspects current stack PRs before pushing. It refuses to submit if any new PR
+  branch, or any existing PR with an empty body, lacks a non-empty
+  `descriptions:[{branch, body}]` entry. After submit it writes supplied bodies
+  with `gh pr edit --body-file` and verifies bodies are non-empty. Use
+  `overwriteDescriptions:true` only when user explicitly wants to replace an
+  existing non-empty body.
 - **Destructive sync flags require `confirmDestructive:true`** (`force`,
   `deleteAll`).
 - **Never use `git rebase --continue` after a gt command.** Use
   `graphite_recover action="continue"`.
-- **This extension wraps gt only.** For PR body/title edits, review
-  comments, check runs, etc., use a dedicated `gh` tool/extension if
-  available. If you must shell out to `gh` from bash, pass fully explicit
-  non-interactive arguments only — never `gh auth login`, `--web`, or any
-  command that opens a browser, editor, or prompt.
+- **This extension wraps gt for stack operations.** `graphite_submit` also uses
+  explicit non-interactive `gh pr view/edit --body-file` calls to enforce PR
+  bodies. For PR title edits, review comments, check runs, etc., use a
+  dedicated `gh` tool/extension if available. If you must shell out to `gh`
+  from bash, pass fully explicit non-interactive arguments only — never
+  `gh auth login`, `--web`, or any command that opens a browser, editor, or
+  prompt.
 - **Direct `gt` is allowed only when no tool covers the command.** The tools
   above are the default path. If you genuinely need a `gt` subcommand this
   extension does not expose (and the user has not asked to run it
