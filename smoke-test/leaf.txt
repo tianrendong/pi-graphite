@@ -1,0 +1,1 @@
+Temporary pi-graphite 0.7.0 integration test: descendant retained and restacked after both folds.
