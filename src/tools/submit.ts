@@ -38,6 +38,8 @@ const NO_PR_RE = /no pull requests? found|not found|could not resolve to a pull 
  * Wraps `gt submit --stack --no-edit --no-ai`. PR descriptions are supplied
  * explicitly and then applied with non-interactive `gh pr edit --body-file`.
  * New PRs and existing empty PRs require descriptions before remote mutation.
+ * Preserve authored bodies based on the pre-submit snapshot, not bodies that gt
+ * generates from a PR template while submitting.
  */
 export function registerSubmit(pi: ExtensionAPI) {
   pi.registerTool({
@@ -50,7 +52,8 @@ export function registerSubmit(pi: ExtensionAPI) {
     promptGuidelines: [
       "Always call graphite_submit with apply:false (default) first to review the dry-run plan, then call again with apply:true and confirmRemote:true to actually push.",
       "When apply:true might create PRs, pass descriptions:[{branch, body}] for each new PR branch. Existing PRs with empty bodies also require descriptions.",
-      "Use overwriteDescriptions:true only when user explicitly wants to replace existing non-empty PR bodies.",
+      "Before graphite_submit, read the repository's PR template if present and fill it in as the complete descriptions[].body. Template bodies generated during submit do not block supplied descriptions.",
+      "Use graphite_submit overwriteDescriptions:true only when user explicitly wants to replace PR bodies that were already non-empty before submit.",
     ],
     parameters: Type.Object({
       cwd: CwdParam,
@@ -68,7 +71,7 @@ export function registerSubmit(pi: ExtensionAPI) {
               description: "Branch whose PR body should be set.",
             }),
             body: Type.String({
-              description: "Non-empty PR description/body for this branch.",
+              description: "Complete non-empty PR body for this branch, with the repository's PR template filled in if present.",
             }),
           }),
           {
@@ -80,7 +83,7 @@ export function registerSubmit(pi: ExtensionAPI) {
       overwriteDescriptions: Type.Optional(
         Type.Boolean({
           description:
-            "Replace existing non-empty PR bodies with supplied descriptions. Default false preserves existing bodies.",
+            "Replace PR bodies that were non-empty before submit. Default false preserves those bodies, but still replaces template/generated bodies for new or previously empty PRs.",
         }),
       ),
       draft: Type.Optional(
@@ -207,13 +210,13 @@ export function registerSubmit(pi: ExtensionAPI) {
         f = await ensureSuccess(label, r, p.cwd, { mutating: apply });
       } catch (e) {
         if (apply && descriptionByBranch.size) {
-          await applyDescriptions(p.cwd, descriptionByBranch, overwriteDescriptions, signal, true).catch(() => undefined);
+          await applyDescriptions(p.cwd, descriptionByBranch, preflight, overwriteDescriptions, signal, true).catch(() => undefined);
         }
         throw e;
       }
 
       const descriptionResults = apply
-        ? await applyDescriptions(p.cwd, descriptionByBranch, overwriteDescriptions, signal, false)
+        ? await applyDescriptions(p.cwd, descriptionByBranch, preflight, overwriteDescriptions, signal, false)
         : [];
       const dryRunNote = !apply && requiredDescriptions.length
         ? `\n\n--- pr-description-preflight ---\nDescriptions required before apply:true: ${requiredDescriptions.join(", ")}`
@@ -330,12 +333,18 @@ function requiredDescriptionBranches(prs: PrInfo[], updateOnly: boolean): string
 async function applyDescriptions(
   cwd: string,
   descriptionByBranch: Map<string, string>,
+  preflight: PrInfo[],
   overwrite: boolean,
   signal: AbortSignal | undefined,
   allowMissingPr: boolean,
 ): Promise<DescriptionApplyResult[]> {
   const results: DescriptionApplyResult[] = [];
+  const beforeSubmit = new Map(preflight.map((pr) => [pr.branch, pr]));
   for (const [branch, body] of descriptionByBranch) {
+    const previous = beforeSubmit.get(branch);
+    if (!previous) {
+      throw new Error(`No pre-submit PR snapshot for branch ${branch}; refusing to replace its description.`);
+    }
     const info = (await inspectPrs(cwd, [branch], signal))[0];
     if (!info?.exists) {
       if (allowMissingPr) {
@@ -344,7 +353,10 @@ async function applyDescriptions(
       }
       throw new Error(`PR for branch ${branch} not found after submit; cannot set description.`);
     }
-    if (info.body?.trim() && !overwrite) {
+    // gt may populate a new/empty PR with a template or commit text. Only
+    // protect bodies that existed BEFORE submit; otherwise the requested
+    // description would be silently skipped whenever a template is present.
+    if (previous.exists && previous.body?.trim() && !overwrite) {
       results.push({ branch, action: "skipped_existing_body", number: info.number });
       continue;
     }
@@ -360,8 +372,11 @@ async function applyDescriptions(
     }
 
     const verify = (await inspectPrs(cwd, [branch], signal))[0];
-    if (!verify?.body?.trim()) {
-      throw new Error(`PR description verification failed for ${branch}: body is still empty.`);
+    // GitHub may normalize line endings and surrounding whitespace. A merely
+    // non-empty response is not enough: an unchanged template is non-empty too.
+    const normalizeBody = (text: string) => text.replace(/\r\n/g, "\n").trim();
+    if (normalizeBody(verify?.body ?? "") !== normalizeBody(body)) {
+      throw new Error(`PR description verification failed for ${branch}: body does not match the supplied description.`);
     }
     results.push({ branch, action: "set", number: verify.number });
   }

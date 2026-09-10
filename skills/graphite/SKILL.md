@@ -1,6 +1,6 @@
 ---
 name: graphite
-description: Manage stacked PRs with the Graphite (gt) CLI via the pi-graphite extension. Use when creating, updating, navigating, reparenting, or pushing a Graphite stack, or when recovering from a halted gt command. Wraps `gt` for stack operations and enforces PR descriptions during submit via non-interactive `gh`; does not touch PR titles/reviews or expose interactive stack surgery.
+description: Manage stacked PRs with the Graphite (gt) CLI via the pi-graphite extension. Use when creating, updating, navigating, reparenting, folding, or pushing a Graphite stack, or when recovering from a halted gt command. Wraps `gt` for stack operations and enforces PR descriptions during submit via non-interactive `gh`; does not touch PR titles/reviews or expose interactive stack surgery.
 ---
 
 # Graphite (pi-graphite)
@@ -23,6 +23,8 @@ Use this skill whenever the user wants to:
 - recover from a gt conflict
 - reparent a tracked branch onto a different parent via `graphite_move`
   (`gt move --source --onto`, non-interactive; rebases descendants)
+- fold the current branch into its parent via `graphite_change action=fold`
+  (`gt fold [--keep]`, non-interactive; deletes one branch and restacks descendants)
 
 Do not use it for:
 
@@ -30,7 +32,7 @@ Do not use it for:
   tool/extension; see the `gh` rule below. PR bodies are handled only by
   `graphite_submit` via explicit `descriptions:[{branch, body}]`.
 - reading PR review comments or CI status — same
-- rewriting history beyond create/amend/move (split / fold / squash /
+- rewriting history beyond create/amend/move/fold (split / squash /
   reorder). The extension does not expose those, and they prompt
   interactively (base selectors, hunk pickers, editors) and will hang. Ask
   the user to run them in their own terminal.
@@ -47,7 +49,7 @@ The extension registers these tools. Prefer them over `gt`/`git`/`gh` in bash.
 | `graphite_get` | `gt get <branch>` — pull a branch / stack from the remote |
 | `graphite_navigate` | `gt checkout` / `up` / `down` / `top` / `bottom` / trunk |
 | `graphite_move` | `gt move --source --onto` — reparent a tracked branch + restack descendants (dry-run by default) |
-| `graphite_change` | `gt create` / `gt modify` / `gt modify --into` / `gt absorb` |
+| `graphite_change` | `gt create` / `gt modify` / `gt modify --into` / `gt absorb` / `gt fold [--keep]` |
 | `graphite_submit` | `gt submit --stack --no-edit` (dry-run by default) + required PR descriptions via `gh pr edit --body-file` |
 | `graphite_recover` | `gt continue` / `gt abort` / `gt undo` / `gt restack` |
 
@@ -207,6 +209,30 @@ graphite_change({ cwd, action: "absorb" })             # dry-run
 graphite_change({ cwd, action: "absorb", apply: true }) # apply
 ```
 
+### Fold the current branch into its parent
+
+Fold combines committed branch histories; it does not squash commits or stage
+working-tree changes. Both the current branch and its parent must be non-trunk.
+No `message` is needed.
+
+```
+graphite_status({ cwd })
+graphite_navigate({ cwd, action: "checkout", branch: "<child-branch>" })
+graphite_change({ cwd, action: "fold" })  # read-only plan; gt fold has no --dry-run
+# Review which branch will be deleted, then:
+graphite_change({ cwd, action: "fold", apply: true, confirmDestructive: true })
+graphite_status({ cwd })
+```
+
+Default keeps the parent's name and deletes the current branch. To keep the
+current branch name and delete its parent instead, pass `keep:true` to both
+calls (`gt fold --keep`). Descendants of the combined branch are restacked,
+including sibling branches previously stacked on the parent. Check those too;
+the plan's current-stack view may not show every sibling.
+If folding halts on a conflict, use `graphite_recover action="continue"` or
+`"abort"`. Local fold does not close PRs or delete remote branches; inspect
+those separately before submitting the remaining stack.
+
 ### After PRs in the stack merge
 
 ```
@@ -312,10 +338,21 @@ graphite_recover({ cwd, action: "undo" })
 - **`apply:true` requires `confirmRemote:true` and PR descriptions.** The tool
   inspects current stack PRs before pushing. It refuses to submit if any new PR
   branch, or any existing PR with an empty body, lacks a non-empty
-  `descriptions:[{branch, body}]` entry. After submit it writes supplied bodies
-  with `gh pr edit --body-file` and verifies bodies are non-empty. Use
-  `overwriteDescriptions:true` only when user explicitly wants to replace an
-  existing non-empty body.
+  `descriptions:[{branch, body}]` entry. Read the repository's PR template if
+  present and supply the completed template as the whole body; the tool does
+  not merge text into templates. After submit it writes supplied bodies with
+  `gh pr edit --body-file` and verifies they match (allowing line-ending and
+  surrounding-whitespace normalization). Template/commit-text bodies generated
+  during submit do not block descriptions for new or previously empty PRs.
+  Preservation uses the pre-submit snapshot, including during best-effort
+  repair after a partial failure. Use `overwriteDescriptions:true` only when
+  the user explicitly wants to replace a body that was already non-empty
+  before submit, including a template-only body left by an earlier submit.
+- **Fold only through `graphite_change action=fold`.** Review the default
+  read-only plan first; `apply:true` requires `confirmDestructive:true`.
+  Default keeps the parent's name; `keep:true` keeps the current branch name.
+  The other branch is deleted and descendants are restacked. Run
+  `graphite_status` afterward. Fold does not stage changes or squash commits.
 - **Destructive sync flags require `confirmDestructive:true`** (`force`,
   `deleteAll`).
 - **Never use `git rebase --continue` after a gt command.** Use
@@ -335,11 +372,11 @@ graphite_recover({ cwd, action: "undo" })
   - Always pass `--no-interactive` (and `--cwd <abs>`).
   - Safe read-only fallbacks: `gt log`, `gt log --stack`, `gt info`,
     `gt children`, `gt parent`, `gt trunk`, `gt state`.
-  - Never run interactive surgery (`gt split` / `fold` / `squash` /
-    `reorder`) or anything that opens an editor, pager, hunk picker, or
-    browser — those hang. Use `graphite_move` for non-interactive reparenting
-    via explicit `--source` / `--onto`; ask the user to run other surgery in
-    their own terminal.
+  - Never run interactive surgery (`gt split` / `squash` / `reorder`) or
+    anything that opens an editor, pager, hunk picker, or browser — those hang.
+    Use `graphite_move` for non-interactive reparenting via explicit
+    `--source` / `--onto`, and `graphite_change action=fold` for guarded folding.
+    Ask the user to run other surgery in their own terminal.
   - Prefer the dedicated tool whenever one exists; direct `gt` skips the
     safety confirmations, hint parsing, and warning detection the tools add.
 - **No interactive editor / browser / hunk picker.** All paths are

@@ -122,6 +122,12 @@ async function runCommand(
   opts: GtRunOptions,
 ): Promise<GtRunResult> {
   const cwd = resolvePath(opts.cwd);
+  const cleanOutput = (text: string) => {
+    const plain = stripAnsi(text);
+    // gh JSON contains user-authored PR bodies. Rebranding that data corrupts
+    // body comparisons and can make a successful description update fail.
+    return command === "gt" ? sanitizeBranding(plain) : plain;
+  };
   return new Promise<GtRunResult>((resolve) => {
     let child: ChildProcessByStdio<null, Readable, Readable>;
     try {
@@ -183,8 +189,8 @@ async function runCommand(
         args,
         cwd,
         exitCode: -1,
-        stdout: sanitizeBranding(stripAnsi(stdout)),
-        stderr: sanitizeBranding(stripAnsi(stderr)),
+        stdout: cleanOutput(stdout),
+        stderr: cleanOutput(stderr),
         timedOut: killed,
         spawnError: err.message,
       });
@@ -200,8 +206,8 @@ async function runCommand(
         args,
         cwd,
         exitCode: code ?? -1,
-        stdout: truncateOutput(sanitizeBranding(stripAnsi(stdout))),
-        stderr: truncateOutput(sanitizeBranding(stripAnsi(stderr))),
+        stdout: truncateOutput(cleanOutput(stdout)),
+        stderr: truncateOutput(cleanOutput(stderr)),
         timedOut: killed,
       });
     });

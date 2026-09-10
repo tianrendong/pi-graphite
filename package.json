@@ -1,6 +1,6 @@
 {
   "name": "pi-graphite",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Opinionated pi tools + skill for stacked PR workflows with the Graphite (gt) CLI.",
   "keywords": [
     "pi",
@@ -37,7 +37,13 @@
     "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "jiti": "^2.7.0",
+    "typescript": "^5.9.3"
+  },
   "scripts": {
-    "test": "node -e \"console.log('no tests')\""
+    "check": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs"
   }
 }
