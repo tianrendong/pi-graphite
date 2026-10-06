@@ -35,6 +35,7 @@ export function registerChange(pi: ExtensionAPI) {
       "Use graphite_change action=create to start a new PR branch on top of the current branch. Always provide `message`.",
       "Use graphite_change action=amend to update the current PR's commit. Always provide `message`.",
       "Run graphite_status first to confirm you are on the intended branch.",
+      "Do not run `gt create`, `gt modify`, or `gt submit` from bash; use graphite_change and graphite_submit, which add confirmations and stay non-interactive.",
       "graphite_change create/amend/amend_into/absorb include tracked modifications via --all. Fold only combines committed branch histories; it does not stage working-tree changes or squash commits.",
       "Use graphite_change action=fold to fold the current branch into its non-trunk parent. First review apply:false, then use apply:true and confirmDestructive:true. Default deletes the current branch; keep:true deletes the parent instead and retains the current branch name. Descendants, including other branches stacked on the parent, are restacked.",
       "If graphite_change fold halts on a conflict, resolve files then use graphite_recover action=continue (or abort). Run graphite_status after folding before further changes or submit.",

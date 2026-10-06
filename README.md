@@ -1,6 +1,6 @@
 # pi-graphite
 
-Opinionated pi tools + skill that wrap the [Graphite](https://graphite.com)
+Opinionated pi tools that wrap the [Graphite](https://graphite.com)
 `gt` CLI for stacked PR workflows. A small set of tools, one correct path.
 
 ```
@@ -41,9 +41,8 @@ pi install /path/to/pi-graphite
 pi -e /path/to/pi-graphite
 ```
 
-The package also ships a `graphite` skill (`skills/graphite/SKILL.md`) that pi
-auto-discovers. It describes the golden path and per-recipe tool calls; the
-agent loads it on demand.
+Agent guidance ships with each tool's prompt snippet and guidelines, so it is
+always in context without loading a separate skill.
 
 ## Registered tools
 

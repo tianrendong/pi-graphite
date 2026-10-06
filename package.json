@@ -1,7 +1,7 @@
 {
   "name": "pi-graphite",
-  "version": "0.7.0",
-  "description": "Opinionated pi tools + skill for stacked PR workflows with the Graphite (gt) CLI.",
+  "version": "0.8.0",
+  "description": "Opinionated pi tools for stacked PR workflows with the Graphite (gt) CLI.",
   "keywords": [
     "pi",
     "pi-package",
@@ -20,16 +20,12 @@
   "homepage": "https://github.com/tianrendong/pi-graphite#readme",
   "files": [
     "src",
-    "skills",
     "README.md",
     "LICENSE"
   ],
   "pi": {
     "extensions": [
       "./src/index.ts"
-    ],
-    "skills": [
-      "./skills"
     ]
   },
   "peerDependencies": {
