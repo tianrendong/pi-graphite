@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
 import { assertSafeRef, shellJoin } from "../lib/argv";
-import { ensureSuccess, renderText } from "../lib/result";
+import { ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult } from "../lib/result";
 import {
   CwdParam,
   Type,
@@ -32,6 +32,7 @@ export function registerGet(pi: ExtensionAPI) {
       "Use graphite_get to pull a branch (and its descendants) from the remote. graphite_sync only handles trunk + already-tracked local branches.",
       "graphite_get with force=true may overwrite local commits; pass confirmDestructive:true.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       branch: Type.String({
@@ -58,10 +59,7 @@ export function registerGet(pi: ExtensionAPI) {
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
-      return {
-        content: [{ type: "text", text: renderText(label, f) }],
-        details: { result: f },
-      };
+      return textResult((view) => renderText(label, f, view), { result: f });
     },
   });
 }

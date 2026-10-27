@@ -1,6 +1,30 @@
 import { spawn } from "node:child_process";
 import { shellJoin } from "./argv";
-import { DEFAULT_COMMAND_TIMEOUT_MS, killProcessGroup, runGt, safeNoninteractiveEnv, type GtRunResult } from "./exec";
+import { DEFAULT_COMMAND_TIMEOUT_MS, fullOutput, killProcessGroup, runGt, safeNoninteractiveEnv, type GtRunResult } from "./exec";
+import { Type, type ToolReturn } from "./schema";
+
+/**
+ * Who a rendering is for. `model` caps each command's output at 2000 lines / 50KB; `script` is
+ * what codemode scripts receive and keeps the full output.
+ */
+export type OutputView = "model" | "script";
+
+/** `outputSchema` shared by every tool: scripts receive the report as one string. */
+export const GRAPHITE_OUTPUT_SCHEMA = Type.String({
+  description: "The same report the model sees, with untruncated gt/gh output.",
+});
+
+/** Build a tool result whose model text is capped and whose script value is complete. */
+export function textResult(
+  render: (view: OutputView) => string,
+  details: Record<string, unknown>,
+): ToolReturn {
+  return {
+    content: [{ type: "text", text: render("model") }],
+    structuredContent: render("script"),
+    details,
+  };
+}
 
 /**
  * Structured failure hints. Only populated when the underlying `gt` command
@@ -63,7 +87,8 @@ function stripNonWarningPromptSkips(text: string): string {
 }
 
 function parseWarnings(r: GtRunResult): GtWarnings {
-  const rawText = `${r.stdout}\n${r.stderr}`;
+  const full = fullOutput(r);
+  const rawText = `${full.stdout}\n${full.stderr}`;
   const text = stripNonWarningPromptSkips(rawText);
   const w: GtWarnings = {};
   // A help/usage dump is full of command descriptions, not real warnings.
@@ -133,7 +158,8 @@ function looksLikeUsageDump(text: string): boolean {
 }
 
 function parseHints(r: GtRunResult): GtHints {
-  const text = `${r.stdout}\n${r.stderr}`;
+  const full = fullOutput(r);
+  const text = `${full.stdout}\n${full.stderr}`;
   const hints: GtHints = {};
 
   // Match both singular and plural ("Unknown argument(s):").
@@ -207,8 +233,9 @@ export function formatResult(r: GtRunResult, opts?: FormatOptions): FormattedRes
 }
 
 /** Render a formatted result into a single text block. */
-export function renderText(label: string, f: FormattedResult): string {
+export function renderText(label: string, f: FormattedResult, view: OutputView = "model"): string {
   const r = f.result;
+  const { stdout, stderr } = view === "script" ? fullOutput(r) : r;
   const lines: string[] = [];
   lines.push(`$ gt ${shellJoin(r.args)}`);
   lines.push(
@@ -216,13 +243,13 @@ export function renderText(label: string, f: FormattedResult): string {
       r.spawnError ? `  (spawn-error: ${r.spawnError})` : ""
     }`,
   );
-  if (r.stdout.trim()) {
+  if (stdout.trim()) {
     lines.push("--- stdout ---");
-    lines.push(r.stdout.replace(/\s+$/, ""));
+    lines.push(stdout.replace(/\s+$/, ""));
   }
-  if (r.stderr.trim()) {
+  if (stderr.trim()) {
     lines.push("--- stderr ---");
-    lines.push(r.stderr.replace(/\s+$/, ""));
+    lines.push(stderr.replace(/\s+$/, ""));
   }
   if (f.isFailure && Object.keys(f.hints).length) {
     lines.push("--- hints ---");

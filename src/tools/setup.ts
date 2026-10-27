@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
 import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
-import { ensureSuccess, renderText } from "../lib/result";
+import { ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult } from "../lib/result";
 import {
   CwdParam,
   StringEnum,
@@ -31,6 +31,7 @@ export function registerSetup(pi: ExtensionAPI) {
       "For track_branch, never infer the parent silently. Ask the user if the intended parent is unclear, then pass confirmParent:true.",
       "Do not use graphite_setup for untrack/freeze/unfreeze; those are outside the core workflow.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       action: StringEnum(["init_repo", "track_branch"] as const),
@@ -112,10 +113,7 @@ export function registerSetup(pi: ExtensionAPI) {
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
-      return {
-        content: [{ type: "text", text: renderText(label, f) }],
-        details: { action: p.action, result: f },
-      };
+      return textResult((view) => renderText(label, f, view), { action: p.action, result: f });
     },
   });
 }

@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
 import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
-import { ensureSuccess, renderText } from "../lib/result";
+import { ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult, type OutputView } from "../lib/result";
 import { buildTargetedStatus } from "./status";
 import {
   CwdParam,
@@ -46,6 +46,7 @@ export function registerMove(pi: ExtensionAPI) {
       "Pass explicit branch and explicit parent. The wrapper never picks them interactively.",
       "If the move halts on a conflict, follow the hint and use graphite_recover action=continue (or abort).",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       branch: Type.String({
@@ -87,7 +88,7 @@ export function registerMove(pi: ExtensionAPI) {
           flagEq("--source", branch),
           flagEq("--onto", parent),
         ])}`;
-        const plan = [
+        const plan = (view: OutputView) => [
           `[graphite_move] dry-run (no changes made)`,
           ``,
           `Planned: reparent ${branch} onto ${parent}.`,
@@ -99,12 +100,9 @@ export function registerMove(pi: ExtensionAPI) {
           `If it halts on a conflict, resolve files then graphite_recover action="continue".`,
           ``,
           `--- targeted preflight status ---`,
-          targeted.text,
+          targeted.render(view),
         ].join("\n");
-        return {
-          content: [{ type: "text", text: plan }],
-          details: { apply: false, branch, parent, targeted: targeted.details },
-        };
+        return textResult(plan, { apply: false, branch, parent, targeted: targeted.details });
       }
 
       // --- apply: real rebase. Destructive, so require confirmation.
@@ -130,20 +128,11 @@ export function registerMove(pi: ExtensionAPI) {
         { includeTopology: true },
       );
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: [
-              renderText(label, f),
-              ``,
-              `--- targeted status after move ---`,
-              targeted.text,
-            ].join("\n"),
-          },
-        ],
-        details: { apply: true, branch, parent, result: f, targeted: targeted.details },
-      };
+      return textResult(
+        (view) =>
+          [renderText(label, f, view), ``, `--- targeted status after move ---`, targeted.render(view)].join("\n"),
+        { apply: true, branch, parent, result: f, targeted: targeted.details },
+      );
     },
   });
 }

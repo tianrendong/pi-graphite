@@ -8,7 +8,7 @@ import {
   safeNoninteractiveEnv,
 } from "../lib/exec";
 import { shellJoin } from "../lib/argv";
-import { ensureSuccess, renderText } from "../lib/result";
+import { ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult } from "../lib/result";
 import { CwdParam, StringEnum, Type, type ToolReturn } from "../lib/schema";
 
 function runGit(
@@ -90,6 +90,7 @@ export function registerRecover(pi: ExtensionAPI) {
       "graphite_recover action=undo only undoes commands run from the current worktree.",
       "Use graphite_recover action=restack when graphite_status reports branches out of date with their parent but no remote pull is needed; use graphite_sync when trunk itself may have moved.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       action: StringEnum(["continue", "abort", "undo", "restack"] as const),
@@ -143,10 +144,7 @@ export function registerRecover(pi: ExtensionAPI) {
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
-      return {
-        content: [{ type: "text", text: renderText(label, f) }],
-        details: { action: p.action, result: f },
-      };
+      return textResult((view) => renderText(label, f, view), { action: p.action, result: f });
     },
   });
 }

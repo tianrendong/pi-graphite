@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
 import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
-import { ensureSuccess, renderText } from "../lib/result";
+import { ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult } from "../lib/result";
 import {
   CwdParam,
   StringEnum,
@@ -31,6 +31,7 @@ export function registerNavigate(pi: ExtensionAPI) {
       "Before any graphite_change, confirm you are on the intended branch via graphite_status or graphite_navigate.",
       "To create a child PR, navigate to its intended parent first. To create a base PR, navigate to trunk.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       action: StringEnum([
@@ -90,10 +91,7 @@ export function registerNavigate(pi: ExtensionAPI) {
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd);
-      return {
-        content: [{ type: "text", text: renderText(label, f) }],
-        details: { action: p.action, result: f },
-      };
+      return textResult((view) => renderText(label, f, view), { action: p.action, result: f });
     },
   });
 }

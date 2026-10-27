@@ -46,6 +46,8 @@ export function requireConfirm(
 /** Shape returned to the LLM by every tool. */
 export type ToolReturn = {
   content: Array<{ type: "text"; text: string }>;
+  /** What codemode scripts receive instead of `content`: the report with untruncated output. */
+  structuredContent: string;
   details: Record<string, unknown>;
   isError?: boolean;
 };

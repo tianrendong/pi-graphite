@@ -226,3 +226,11 @@ test("description and confirmation guardrails remain enforced", async (t) => {
   await assert.rejects(submit.execute("test", { ...apply, descriptions: [{ branch: "outside", body: description }] }), /outside current stack/);
   assert.equal(submissions(calls).length, 0);
 });
+
+test("PR descriptions over the 50KB output cap are applied and verified", async (t) => {
+  const longDescription = `## Summary\n${"Migration output line.\n".repeat(4_000)}`;
+  const { prs } = scenario(t);
+  const result = await submit.execute("test", { ...apply, descriptions: [{ branch: "feature", body: longDescription }] });
+  assert.equal(prs.get("feature").body, longDescription);
+  assert.deepEqual(result.details.descriptionUpdates, [{ branch: "feature", action: "set", number: 1 }]);
+});

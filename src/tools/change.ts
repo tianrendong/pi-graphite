@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runGt } from "../lib/exec";
 import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
-import { ensureAllSuccess, ensureSuccess, renderText } from "../lib/result";
+import { ensureAllSuccess, ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult, type OutputView } from "../lib/result";
 import {
   CwdParam,
   StringEnum,
@@ -40,6 +40,7 @@ export function registerChange(pi: ExtensionAPI) {
       "Use graphite_change action=fold to fold the current branch into its non-trunk parent. First review apply:false, then use apply:true and confirmDestructive:true. Default deletes the current branch; keep:true deletes the parent instead and retains the current branch name. Descendants, including other branches stacked on the parent, are restacked.",
       "If graphite_change fold halts on a conflict, resolve files then use graphite_recover action=continue (or abort). Run graphite_status after folding before further changes or submit.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       action: StringEnum([
@@ -151,10 +152,7 @@ export function registerChange(pi: ExtensionAPI) {
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
-      return {
-        content: [{ type: "text", text: renderText(label, f) }],
-        details: { action: p.action, result: f },
-      };
+      return textResult((view) => renderText(label, f, view), { action: p.action, result: f });
     },
   });
 }
@@ -197,7 +195,7 @@ async function foldCurrentBranch(
   if (!apply) {
     const log = await runGt(["log", "--stack"], { cwd, signal });
     const preflight = await ensureSuccess("gt log --stack", log, cwd, { requireStdout: true });
-    const plan = [
+    const plan = (view: OutputView) => [
       "[graphite_change fold] dry-run (no changes made)",
       "",
       `Fold the current branch into its parent (${parent}) and restack descendants of the combined branch.`,
@@ -211,19 +209,13 @@ async function foldCurrentBranch(
       "If it halts on a conflict, resolve files then graphite_recover action=continue (or abort).",
       "",
       "--- preflight stack ---",
-      renderText("gt log --stack", preflight),
+      renderText("gt log --stack", preflight, view),
     ].join("\n");
-    return {
-      content: [{ type: "text", text: plan }],
-      details: { action: "fold", apply: false, keep, parent, preflight },
-    };
+    return textResult(plan, { action: "fold", apply: false, keep, parent, preflight });
   }
 
   const label = `gt ${shellJoin(args)}`;
   const result = await runGt(args, { cwd, signal });
   const formatted = await ensureSuccess(label, result, cwd, { mutating: true });
-  return {
-    content: [{ type: "text", text: renderText(label, formatted) }],
-    details: { action: "fold", apply: true, keep, parent, result: formatted },
-  };
+  return textResult((view) => renderText(label, formatted, view), { action: "fold", apply: true, keep, parent, result: formatted });
 }

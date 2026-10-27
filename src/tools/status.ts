@@ -1,11 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { runGt } from "../lib/exec";
+import { fullOutput, runGt } from "../lib/exec";
 import { assertSafeRef, shellJoin } from "../lib/argv";
 import {
   ensureAllSuccess,
   ensureSuccess,
+  GRAPHITE_OUTPUT_SCHEMA,
   renderText,
+  textResult,
   type FormattedResult,
+  type OutputView,
 } from "../lib/result";
 import { CwdParam, Type, type ToolReturn } from "../lib/schema";
 
@@ -14,7 +17,7 @@ const DEFAULT_TOPOLOGY_CONTEXT_LINES = 3;
 const MAX_TOPOLOGY_CONTEXT_LINES = 20;
 
 export interface TargetedStatusResult {
-  text: string;
+  render: (view: OutputView) => string;
   details: Record<string, unknown>;
 }
 
@@ -121,7 +124,8 @@ function renderFilteredTopology(
   contextLines: number,
 ): { text: string; details: Record<string, unknown> } {
   const r = f.result;
-  const snippet = buildTopologySnippet(r.stdout, branches, contextLines);
+  // Match against the full log so branches past the model's output cap are still found.
+  const snippet = buildTopologySnippet(fullOutput(r).stdout, branches, contextLines);
   const status = Object.keys(f.warnings).length ? "ok (with warnings)" : "ok";
   const lines: string[] = [];
   lines.push(`[${label}] ${status} (filtered topology)`);
@@ -175,9 +179,8 @@ export async function buildTargetedStatus(
     cwd,
   );
 
-  const blocks = infoItems.map((item, idx) =>
-    renderText(item.label, formattedInfo[idx]),
-  );
+  const blocks = (view: OutputView) =>
+    infoItems.map((item, idx) => renderText(item.label, formattedInfo[idx], view));
   const details: Record<string, unknown> = {
     branches,
     info: Object.fromEntries(
@@ -185,6 +188,7 @@ export async function buildTargetedStatus(
     ),
   };
 
+  let topologyText: string | undefined;
   if (includeTopology) {
     const logArgs = ["log"];
     const log = await runGt(logArgs, { cwd, signal });
@@ -195,12 +199,12 @@ export async function buildTargetedStatus(
       branches,
       contextLines,
     );
-    blocks.push(topology.text);
+    topologyText = topology.text;
     details.topology = topology.details;
   }
 
   return {
-    text: blocks.join("\n\n"),
+    render: (view) => [...blocks(view), ...(topologyText ? [topologyText] : [])].join("\n\n"),
     details,
   };
 }
@@ -228,6 +232,7 @@ export function registerStatus(pi: ExtensionAPI) {
       "Run graphite_status at the start of any Graphite workflow, and again whenever you are unsure where you are in the stack.",
       "For cross-stack verification, pass explicit branches with includeTopology:true instead of dumping every tracked branch.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       branches: Type.Optional(
@@ -258,10 +263,7 @@ export function registerStatus(pi: ExtensionAPI) {
           includeTopology: p.includeTopology,
           contextLines: p.contextLines,
         });
-        return {
-          content: [{ type: "text", text: targeted.text }],
-          details: targeted.details,
-        };
+        return textResult(targeted.render, targeted.details);
       }
 
       if (p.includeTopology) {
@@ -281,18 +283,10 @@ export function registerStatus(pi: ExtensionAPI) {
         ],
         p.cwd,
       );
-      return {
-        content: [
-          {
-            type: "text",
-            text: [
-              renderText("gt log --stack", fl),
-              renderText("gt info", fi),
-            ].join("\n\n"),
-          },
-        ],
-        details: { log: fl, info: fi },
-      };
+      return textResult(
+        (view) => [renderText("gt log --stack", fl, view), renderText("gt info", fi, view)].join("\n\n"),
+        { log: fl, info: fi },
+      );
     },
   });
 }

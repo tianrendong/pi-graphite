@@ -16,15 +16,29 @@ export interface GtRunResult {
   args: string[];
   cwd: string;
   exitCode: number;
+  /** Output capped for the model (2000 lines / 50KB). Use {@link fullOutput} for parsing. */
   stdout: string;
   stderr: string;
   timedOut: boolean;
   spawnError?: string;
 }
 
+/**
+ * Uncapped output (up to SCRIPT_OUTPUT_MAX_CHARS), kept outside the result object so it never
+ * lands in tool `details`, which pi persists to the session.
+ */
+const FULL_OUTPUT = new WeakMap<GtRunResult, { stdout: string; stderr: string }>();
+
+/** Full stdout/stderr of a run, for parsing and for codemode scripts. */
+export function fullOutput(r: GtRunResult): { stdout: string; stderr: string } {
+  return FULL_OUTPUT.get(r) ?? { stdout: r.stdout, stderr: r.stderr };
+}
+
 const ANSI = /\x1b\[[0-9;]*[a-zA-Z]/g;
 const MAX_BYTES = 50 * 1024;
 const MAX_LINES = 2000;
+/** Cap on output kept for parsing and scripts; past it the head and tail are kept. */
+export const SCRIPT_OUTPUT_MAX_CHARS = 1024 * 1024;
 export const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
 
 /** Env guardrails: disable editors, pagers, browsers. Must override caller env. */
@@ -93,6 +107,32 @@ export function truncateOutput(s: string): string {
   return `${kept}\n... [truncated: ${s.length - MAX_BYTES} more bytes]`;
 }
 
+/** Collects a stream, keeping the first and last half of SCRIPT_OUTPUT_MAX_CHARS when it overflows. */
+class OutputCapture {
+  private head = "";
+  private tail = "";
+  private dropped = 0;
+
+  push(chunk: string): void {
+    const half = SCRIPT_OUTPUT_MAX_CHARS / 2;
+    if (this.head.length < half) {
+      const room = half - this.head.length;
+      this.head += chunk.slice(0, room);
+      chunk = chunk.slice(room);
+    }
+    if (!chunk) return;
+    const tail = this.tail + chunk;
+    this.dropped += Math.max(0, tail.length - half);
+    this.tail = tail.slice(-half);
+  }
+
+  text(): string {
+    return this.dropped
+      ? `${this.head}\n... [${this.dropped} chars omitted by pi-graphite] ...\n${this.tail}`
+      : this.head + this.tail;
+  }
+}
+
 /**
  * Tokens that re-enable interactive flows in gt and must never appear in
  * rawArgs. Tool authors should not pass these directly, and user-supplied
@@ -153,8 +193,8 @@ async function runCommand(
       return;
     }
 
-    let stdout = "";
-    let stderr = "";
+    const stdoutCapture = new OutputCapture();
+    const stderrCapture = new OutputCapture();
     let killed = false;
     let settled = false;
 
@@ -167,50 +207,34 @@ async function runCommand(
     const timeout = setTimeout(killChild, opts.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS);
     timeout.unref?.();
 
-    child.stdout?.on("data", (d) => {
-      stdout += d.toString();
-      if (stdout.length > MAX_BYTES * 4) stdout = stdout.slice(-MAX_BYTES * 2);
-    });
-    child.stderr?.on("data", (d) => {
-      stderr += d.toString();
-      if (stderr.length > MAX_BYTES * 4) stderr = stderr.slice(-MAX_BYTES * 2);
-    });
+    child.stdout?.on("data", (d) => stdoutCapture.push(d.toString()));
+    child.stderr?.on("data", (d) => stderrCapture.push(d.toString()));
 
     const onAbort = killChild;
     opts.signal?.addEventListener("abort", onAbort, { once: true });
 
-    child.on("error", (err) => {
+    const finish = (exitCode: number, spawnError?: string) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
       opts.signal?.removeEventListener("abort", onAbort);
-      resolve({
+      const stdout = cleanOutput(stdoutCapture.text());
+      const stderr = cleanOutput(stderrCapture.text());
+      const result: GtRunResult = {
         command,
         args,
         cwd,
-        exitCode: -1,
-        stdout: cleanOutput(stdout),
-        stderr: cleanOutput(stderr),
+        exitCode,
+        stdout: truncateOutput(stdout),
+        stderr: truncateOutput(stderr),
         timedOut: killed,
-        spawnError: err.message,
-      });
-    });
-
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      opts.signal?.removeEventListener("abort", onAbort);
-      resolve({
-        command,
-        args,
-        cwd,
-        exitCode: code ?? -1,
-        stdout: truncateOutput(cleanOutput(stdout)),
-        stderr: truncateOutput(cleanOutput(stderr)),
-        timedOut: killed,
-      });
-    });
+        ...(spawnError ? { spawnError } : {}),
+      };
+      FULL_OUTPUT.set(result, { stdout, stderr });
+      resolve(result);
+    };
+    child.on("error", (err) => finish(-1, err.message));
+    child.on("close", (code) => finish(code ?? -1));
   });
 }
 

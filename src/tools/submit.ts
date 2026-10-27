@@ -2,9 +2,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { runGh, runGt, type GtRunResult } from "../lib/exec";
+import { fullOutput, runGh, runGt, type GtRunResult } from "../lib/exec";
 import { assertSafeRef, flagEq, shellJoin } from "../lib/argv";
-import { ensureSuccess, renderText } from "../lib/result";
+import { ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult } from "../lib/result";
 import {
   CwdParam,
   Type,
@@ -55,6 +55,7 @@ export function registerSubmit(pi: ExtensionAPI) {
       "Before graphite_submit, read the repository's PR template if present and fill it in as the complete descriptions[].body. Template bodies generated during submit do not block supplied descriptions.",
       "Use graphite_submit overwriteDescriptions:true only when user explicitly wants to replace PR bodies that were already non-empty before submit.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       apply: Type.Optional(
@@ -225,21 +226,18 @@ export function registerSubmit(pi: ExtensionAPI) {
         ? `\n\n--- pr-description-updates ---\n${descriptionResults.map(renderDescriptionResult).join("\n")}`
         : "";
 
-      return {
-        content: [{ type: "text", text: renderText(label, f) + dryRunNote + applyNote }],
-        details: {
-          apply,
-          result: f,
-          prDescriptionPreflight: preflight.map((x) => ({
-            branch: x.branch,
-            exists: x.exists,
-            number: x.number,
-            bodyEmpty: !x.body?.trim(),
-          })),
-          requiredDescriptions,
-          descriptionUpdates: descriptionResults,
-        },
-      };
+      return textResult((view) => renderText(label, f, view) + dryRunNote + applyNote, {
+        apply,
+        result: f,
+        prDescriptionPreflight: preflight.map((x) => ({
+          branch: x.branch,
+          exists: x.exists,
+          number: x.number,
+          bodyEmpty: !x.body?.trim(),
+        })),
+        requiredDescriptions,
+        descriptionUpdates: descriptionResults,
+      });
     },
   });
 }
@@ -275,7 +273,7 @@ async function stackBranches(cwd: string, signal?: AbortSignal): Promise<string[
 
   const branches: string[] = [];
   const seen = new Set<string>();
-  for (const line of logResult.stdout.split("\n")) {
+  for (const line of fullOutput(logResult).stdout.split("\n")) {
     const m = line.match(/^[\s│]*[◉○◯●]\s+([^\s()]+)/u);
     if (!m) continue;
     const branch = m[1];
@@ -299,7 +297,8 @@ async function inspectPrs(cwd: string, branches: string[], signal?: AbortSignal)
     if (r.exitCode === 0 && !r.timedOut && !r.spawnError) {
       let parsed: { number?: number; body?: string | null } = {};
       try {
-        parsed = JSON.parse(r.stdout || "{}");
+        // Parse the full output: PR bodies can exceed the model's 50KB cap.
+        parsed = JSON.parse(fullOutput(r).stdout || "{}");
       } catch (e) {
         throw new Error(`Failed to parse gh pr view JSON for ${branch}: ${(e as Error).message}`);
       }

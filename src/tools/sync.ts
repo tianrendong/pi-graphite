@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { shellJoin } from "../lib/argv";
 import { runGt } from "../lib/exec";
-import { ensureSuccess, renderText } from "../lib/result";
+import { ensureSuccess, GRAPHITE_OUTPUT_SCHEMA, renderText, textResult } from "../lib/result";
 import {
   CwdParam,
   Type,
@@ -30,6 +30,7 @@ export function registerSync(pi: ExtensionAPI) {
       "Run graphite_sync at the start of a session and any time PRs in the stack may have merged.",
       "graphite_sync with force=true or deleteAll=true is destructive; pass confirmDestructive:true.",
     ],
+    outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       restack: Type.Optional(
@@ -71,10 +72,7 @@ export function registerSync(pi: ExtensionAPI) {
       const label = `gt ${shellJoin(args)}`;
       const r = await runGt(args, { cwd: p.cwd, signal });
       const f = await ensureSuccess(label, r, p.cwd, { mutating: true });
-      return {
-        content: [{ type: "text", text: renderText(label, f) }],
-        details: { result: f },
-      };
+      return textResult((view) => renderText(label, f, view), { result: f });
     },
   });
 }
