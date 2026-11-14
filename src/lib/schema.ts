@@ -28,17 +28,18 @@ export function stageArgs(mode: StageModeValue): string[] {
 
 /** Common cwd param. Required so we always pass an absolute path to gt. */
 export const CwdParam = Type.String({
-  description: "Absolute path to the repository working directory.",
+  description: "Absolute repo path.",
 });
 
 /** Helper to require an explicit ack flag for irreversible/remote ops. */
 export function requireConfirm(
   flag: boolean | undefined,
   what: string,
+  flagName: "confirmDestructive" | "confirmRemote" = "confirmDestructive",
 ): void {
   if (!flag) {
     throw new Error(
-      `Refused: ${what} would mutate remote or destructive state. Pass the matching confirm flag (e.g. confirmRemote: true) to proceed.`,
+      `Refused: ${what} would mutate remote or destructive state. Pass ${flagName}: true to proceed.`,
     );
   }
 }

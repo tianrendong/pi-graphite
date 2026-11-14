@@ -23,36 +23,18 @@ export function registerSync(pi: ExtensionAPI) {
     name: "graphite_sync",
     label: "Graphite: sync",
     description:
-      "Pull trunk, delete merged branches, and restack remaining branches via `gt sync`. Run at session start and after any PR in the stack merges. Destructive flags (`force`, `deleteAll`) require `confirmDestructive`.",
-    promptSnippet:
-      "graphite_sync: `gt sync` — start-of-day + after-merge cleanup and restack",
-    promptGuidelines: [
-      "Run graphite_sync at the start of a session and any time PRs in the stack may have merged.",
-      "graphite_sync with force=true or deleteAll=true is destructive; pass confirmDestructive:true.",
-    ],
+      "`gt sync`: pull trunk, delete merged branches, restack. Run at session start and after PRs merge.",
+    promptSnippet: "graphite_sync: pull trunk, clean merged branches, restack",
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
-      restack: Type.Optional(
-        Type.Boolean({
-          description:
-            "Restack after fetching (default true; pass false for --no-restack).",
-        }),
-      ),
-      allTrunks: Type.Optional(
-        Type.Boolean({ description: "Sync all configured trunks (--all)." }),
-      ),
+      restack: Type.Optional(Type.Boolean({ description: "Default true." })),
+      allTrunks: Type.Optional(Type.Boolean()),
       deleteAll: Type.Optional(
-        Type.Boolean({
-          description:
-            "Delete all merged/closed branches without prompting (--delete-all). Requires confirmDestructive.",
-        }),
+        Type.Boolean({ description: "Delete merged/closed branches; needs confirmDestructive." }),
       ),
       force: Type.Optional(
-        Type.Boolean({
-          description:
-            "Overwrite local branches with remote (--force). Requires confirmDestructive.",
-        }),
+        Type.Boolean({ description: "Overwrite local branches with remote; needs confirmDestructive." }),
       ),
       confirmDestructive: Type.Optional(Type.Boolean()),
     }),

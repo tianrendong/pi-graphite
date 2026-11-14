@@ -25,24 +25,14 @@ export function registerGet(pi: ExtensionAPI) {
     name: "graphite_get",
     label: "Graphite: get",
     description:
-      "Download a branch and its descendants from the Graphite remote and check it out via `gt get <branch>`. Use to pull a teammate's stack or re-pull a branch that changed remotely. `force` (overwrite local) requires confirmDestructive.",
-    promptSnippet:
-      "graphite_get: `gt get <branch>` — pull a branch/stack from remote",
-    promptGuidelines: [
-      "Use graphite_get to pull a branch (and its descendants) from the remote. graphite_sync only handles trunk + already-tracked local branches.",
-      "graphite_get with force=true may overwrite local commits; pass confirmDestructive:true.",
-    ],
+      "`gt get <branch>`: download a branch and its descendants from remote and check it out (e.g. a teammate's stack).",
+    promptSnippet: "graphite_get: pull a branch/stack from remote",
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
-      branch: Type.String({
-        description: "Branch to download from the Graphite remote and check out.",
-      }),
+      branch: Type.String(),
       force: Type.Optional(
-        Type.Boolean({
-          description:
-            "Overwrite local branch state with remote (--force). Requires confirmDestructive.",
-        }),
+        Type.Boolean({ description: "Overwrite local state; needs confirmDestructive." }),
       ),
       confirmDestructive: Type.Optional(Type.Boolean()),
     }),

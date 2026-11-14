@@ -46,87 +46,37 @@ export function registerSubmit(pi: ExtensionAPI) {
     name: "graphite_submit",
     label: "Graphite: submit stack",
     description:
-      "Push the entire current stack and create/update PRs via `gt submit --stack --no-edit`, then set PR descriptions via `gh pr edit --body-file`. Defaults to a dry-run plan; apply requires confirmRemote and descriptions for new/empty PRs.",
-    promptSnippet:
-      "graphite_submit: plan or apply `gt submit --stack`; apply requires PR descriptions for new/empty PRs",
+      "`gt submit --stack`: push the current stack, create/update PRs, then set PR bodies. Dry-run by default; apply:true requires confirmRemote:true and descriptions for new/empty PRs.",
+    promptSnippet: "graphite_submit: push the stack and create/update PRs",
     promptGuidelines: [
-      "Always call graphite_submit with apply:false (default) first to review the dry-run plan, then call again with apply:true and confirmRemote:true to actually push.",
-      "When apply:true might create PRs, pass descriptions:[{branch, body}] for each new PR branch. Existing PRs with empty bodies also require descriptions.",
-      "Before graphite_submit, read the repository's PR template if present and fill it in as the complete descriptions[].body. Template bodies generated during submit do not block supplied descriptions.",
-      "Use graphite_submit overwriteDescriptions:true only when user explicitly wants to replace PR bodies that were already non-empty before submit.",
+      "Run graphite_submit dry-run before apply:true. Write each descriptions[].body by filling in the repo's PR template if one exists.",
     ],
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
-      apply: Type.Optional(
-        Type.Boolean({
-          description:
-            "false => --dry-run (default). true => actually push + set provided PR descriptions (requires confirmRemote).",
-        }),
-      ),
+      apply: Type.Optional(Type.Boolean()),
       confirmRemote: Type.Optional(Type.Boolean()),
       descriptions: Type.Optional(
-        Type.Array(
-          Type.Object({
-            branch: Type.String({
-              description: "Branch whose PR body should be set.",
-            }),
-            body: Type.String({
-              description: "Complete non-empty PR body for this branch, with the repository's PR template filled in if present.",
-            }),
-          }),
-          {
-            description:
-              "PR descriptions keyed by branch. Required for each new PR and each existing empty PR on apply:true.",
-          },
-        ),
+        Type.Array(Type.Object({ branch: Type.String(), body: Type.String() }), {
+          description: "PR bodies; required on apply for new or empty-body PRs.",
+        }),
       ),
       overwriteDescriptions: Type.Optional(
         Type.Boolean({
-          description:
-            "Replace PR bodies that were non-empty before submit. Default false preserves those bodies, but still replaces template/generated bodies for new or previously empty PRs.",
+          description: "Also replace PR bodies that were already non-empty. Only if the user asks.",
         }),
       ),
-      draft: Type.Optional(
-        Type.Boolean({ description: "Create new PRs as drafts (--draft)." }),
-      ),
-      publish: Type.Optional(
-        Type.Boolean({ description: "Take PRs out of draft (--publish)." }),
-      ),
-      updateOnly: Type.Optional(
-        Type.Boolean({
-          description: "Only update existing PRs, do not create new ones (--update-only).",
-        }),
-      ),
-      mergeWhenReady: Type.Optional(
-        Type.Boolean({ description: "Enable auto-merge (--merge-when-ready)." }),
-      ),
-      rerequestReview: Type.Optional(
-        Type.Boolean({
-          description: "Re-request review from existing reviewers (--rerequest-review).",
-        }),
-      ),
-      reviewers: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "User reviewers (--reviewers).",
-        }),
-      ),
-      teamReviewers: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Team reviewers (--team-reviewers).",
-        }),
-      ),
+      draft: Type.Optional(Type.Boolean()),
+      publish: Type.Optional(Type.Boolean()),
+      updateOnly: Type.Optional(Type.Boolean()),
+      mergeWhenReady: Type.Optional(Type.Boolean()),
+      rerequestReview: Type.Optional(Type.Boolean()),
+      reviewers: Type.Optional(Type.Array(Type.String())),
+      teamReviewers: Type.Optional(Type.Array(Type.String())),
       forcePush: Type.Optional(
-        Type.Boolean({
-          description:
-            "--force (instead of default --force-with-lease). Requires confirmRemote.",
-        }),
+        Type.Boolean({ description: "--force instead of --force-with-lease." }),
       ),
-      ignoreOutOfSyncTrunk: Type.Optional(
-        Type.Boolean({
-          description: "Submit even if trunk is out of sync (--ignore-out-of-sync-trunk).",
-        }),
-      ),
+      ignoreOutOfSyncTrunk: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {
       const apply = p.apply === true;
@@ -134,10 +84,11 @@ export function registerSubmit(pi: ExtensionAPI) {
         requireConfirm(
           p.confirmRemote,
           "gt submit --stack (push branches + create/update PRs)",
+          "confirmRemote",
         );
       }
       if (p.forcePush) {
-        requireConfirm(p.confirmRemote, "gt submit --force");
+        requireConfirm(p.confirmRemote, "gt submit --force", "confirmRemote");
       }
 
       const descriptionByBranch = normalizeDescriptions(p.descriptions ?? []);

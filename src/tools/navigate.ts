@@ -24,12 +24,10 @@ export function registerNavigate(pi: ExtensionAPI) {
     name: "graphite_navigate",
     label: "Graphite: navigate",
     description:
-      "Move around the current Graphite stack: checkout a specific branch, jump to trunk, or step up/down/top/bottom. Use this before graphite_change so you are mutating the right PR.",
-    promptSnippet:
-      "graphite_navigate: checkout / trunk / up / down / top / bottom in the current stack",
+      "Check out a branch, or move to trunk / up / down / top / bottom of the current stack.",
+    promptSnippet: "graphite_navigate: move within the stack",
     promptGuidelines: [
-      "Before any graphite_change, confirm you are on the intended branch via graphite_status or graphite_navigate.",
-      "To create a child PR, navigate to its intended parent first. To create a base PR, navigate to trunk.",
+      "To stack a new PR, graphite_navigate to its intended parent (or trunk) before graphite_change create.",
     ],
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
@@ -42,20 +40,10 @@ export function registerNavigate(pi: ExtensionAPI) {
         "top",
         "bottom",
       ] as const),
-      branch: Type.Optional(
-        Type.String({ description: "action=checkout: branch to checkout." }),
-      ),
-      steps: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          description: "action=up|down: step count.",
-        }),
-      ),
+      branch: Type.Optional(Type.String({ description: "checkout target." })),
+      steps: Type.Optional(Type.Integer({ minimum: 1, description: "up/down count." })),
       to: Type.Optional(
-        Type.String({
-          description:
-            "action=up: target descendant when the current branch has multiple children (--to).",
-        }),
+        Type.String({ description: "up: child to take when there are several." }),
       ),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {

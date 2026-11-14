@@ -225,35 +225,24 @@ export function registerStatus(pi: ExtensionAPI) {
     name: "graphite_status",
     label: "Graphite: status",
     description:
-      "Read-only Graphite snapshot. By default runs `gt log --stack` and `gt info` for the current stack. Pass `branches` for compact `gt info <branch>` output; add `includeTopology:true` for bounded `gt log` snippets around those branches.",
-    promptSnippet:
-      "graphite_status: inspect current stack, or targeted branches before mutating",
+      "Read-only snapshot: `gt log --stack` + `gt info` for the current stack, or `gt info` for specific `branches`.",
+    promptSnippet: "graphite_status: inspect the current stack or specific branches",
     promptGuidelines: [
-      "Run graphite_status at the start of any Graphite workflow, and again whenever you are unsure where you are in the stack.",
-      "For cross-stack verification, pass explicit branches with includeTopology:true instead of dumping every tracked branch.",
+      "Run graphite_status before mutating a Graphite stack and whenever unsure which branch you are on.",
     ],
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       branches: Type.Optional(
         Type.Array(Type.String(), {
-          description:
-            "Optional branch names for targeted status. Runs `gt info <branch>` for each; capped to avoid large outputs.",
+          description: `Inspect these branches instead of the current stack (max ${MAX_STATUS_BRANCHES}).`,
         }),
       ),
       includeTopology: Type.Optional(
-        Type.Boolean({
-          description:
-            "With branches, include bounded snippets from `gt log` around each branch (not the full graph).",
-        }),
+        Type.Boolean({ description: "With branches: add `gt log` snippets around each." }),
       ),
       contextLines: Type.Optional(
-        Type.Integer({
-          minimum: 0,
-          maximum: MAX_TOPOLOGY_CONTEXT_LINES,
-          description:
-            "Topology context lines around each matching branch. Default 3, capped at 20.",
-        }),
+        Type.Integer({ minimum: 0, maximum: MAX_TOPOLOGY_CONTEXT_LINES, description: "Default 3." }),
       ),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {

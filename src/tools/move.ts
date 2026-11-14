@@ -37,30 +37,17 @@ export function registerMove(pi: ExtensionAPI) {
     name: "graphite_move",
     label: "Graphite: move (reparent)",
     description:
-      "Reparent an already-tracked branch onto a new parent and rebase it plus all descendants via `gt move --source <branch> --onto <parent>`. Defaults to a dry-run plan; pass apply:true with confirmDestructive:true to actually rebase. Unlike track_branch --force, this rewrites commits, not just tracking metadata.",
-    promptSnippet:
-      "graphite_move: reparent a tracked branch onto a new parent (`gt move --source --onto`)",
+      "`gt move`: reparent a tracked branch onto a new parent, rebasing it and its descendants. Dry-run by default; apply:true requires confirmDestructive:true.",
+    promptSnippet: "graphite_move: reparent a branch onto a new parent",
     promptGuidelines: [
-      "Use graphite_move to reparent an existing tracked branch onto a different parent. It rebases the moved branch and all its descendants. Do NOT use graphite_setup track_branch --force for this — that only rewrites tracking metadata and leaves commits unrebased.",
-      "Always call graphite_move with apply:false (default) first to review the dry-run plan, then call again with apply:true and confirmDestructive:true to actually rebase.",
-      "Pass explicit branch and explicit parent. The wrapper never picks them interactively.",
-      "If the move halts on a conflict, follow the hint and use graphite_recover action=continue (or abort).",
+      "Reparent with graphite_move, not graphite_setup track_branch force (which rewrites metadata without rebasing).",
     ],
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
-      branch: Type.String({
-        description: "The already-tracked branch to reparent (gt move --source).",
-      }),
-      parent: Type.String({
-        description: "The new parent branch to move `branch` onto (gt move --onto).",
-      }),
-      apply: Type.Optional(
-        Type.Boolean({
-          description:
-            "false => dry-run plan only, no mutation (default). true => actually rebase (requires confirmDestructive).",
-        }),
-      ),
+      branch: Type.String(),
+      parent: Type.String({ description: "New parent." }),
+      apply: Type.Optional(Type.Boolean()),
       confirmDestructive: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {

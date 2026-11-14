@@ -23,48 +23,27 @@ export function registerSetup(pi: ExtensionAPI) {
     name: "graphite_setup",
     label: "Graphite: setup",
     description:
-      "Initialize Graphite in a repo or track an existing Git branch with an explicit Graphite parent. Use only when a repo/branch is not Graphite-ready. Tracking requires an explicit branch, explicit parent, and confirmParent:true.",
-    promptSnippet:
-      "graphite_setup: init_repo | track_branch for Graphite preconditions",
+      "Initialize Graphite (init_repo) or track an existing branch onto an explicit parent (track_branch). Use only when a tool reports notInitialized or branchNotTracked.",
+    promptSnippet: "graphite_setup: init_repo | track_branch",
     promptGuidelines: [
-      "Use graphite_setup only when graphite_status or another tool reports notInitialized or branchNotTracked.",
-      "For track_branch, never infer the parent silently. Ask the user if the intended parent is unclear, then pass confirmParent:true.",
-      "Do not use graphite_setup for untrack/freeze/unfreeze; those are outside the core workflow.",
+      "For graphite_setup track_branch, never guess the parent; ask the user if unclear.",
     ],
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       action: StringEnum(["init_repo", "track_branch"] as const),
-      trunk: Type.Optional(
-        Type.String({
-          description: "action=init_repo: trunk branch name (for example main or master).",
-        }),
-      ),
+      trunk: Type.Optional(Type.String({ description: "init_repo: trunk branch." })),
       reset: Type.Optional(
-        Type.Boolean({
-          description:
-            "action=init_repo: pass --reset and untrack existing Graphite branches. Requires confirmDestructive:true.",
-        }),
+        Type.Boolean({ description: "init_repo: untrack all branches; needs confirmDestructive." }),
       ),
-      branch: Type.Optional(
-        Type.String({ description: "action=track_branch: existing Git branch to track." }),
-      ),
-      parent: Type.Optional(
-        Type.String({
-          description:
-            "action=track_branch: explicit Graphite parent branch. Required; do not guess if unclear.",
-        }),
-      ),
+      branch: Type.Optional(Type.String({ description: "track_branch: branch to track." })),
+      parent: Type.Optional(Type.String({ description: "track_branch: its parent." })),
       confirmParent: Type.Optional(
-        Type.Boolean({
-          description:
-            "action=track_branch: required true to confirm the supplied parent is intentional.",
-        }),
+        Type.Boolean({ description: "track_branch: must be true." }),
       ),
       force: Type.Optional(
         Type.Boolean({
-          description:
-            "action=track_branch: pass --force to overwrite existing tracking metadata. Requires confirmDestructive:true.",
+          description: "track_branch: overwrite existing tracking; needs confirmDestructive.",
         }),
       ),
       confirmDestructive: Type.Optional(Type.Boolean()),

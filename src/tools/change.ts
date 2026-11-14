@@ -28,17 +28,10 @@ export function registerChange(pi: ExtensionAPI) {
     name: "graphite_change",
     label: "Graphite: change",
     description:
-      "Create, amend, or fold branches in the Graphite stack. action=create stacks a new branch on the current one. action=amend updates the current commit. action=amend_into targets a downstack branch. action=absorb routes hunks to commits (dry-run by default). action=fold combines the current branch with its parent and restacks descendants; defaults to a plan, apply:true requires confirmDestructive:true. keep:true retains the current branch name instead of the parent's.",
-    promptSnippet:
-      "graphite_change: create | amend | amend_into | absorb | fold — the only branch mutation tool",
+      "Mutate stack branches. create: new branch on top of current. amend: amend current commit. amend_into: amend a downstack branch. absorb: route hunks into downstack commits. fold: merge current branch into its non-trunk parent and restack. All but fold stage tracked changes (--all). absorb and fold are dry-runs unless apply:true; fold apply also requires confirmDestructive:true.",
+    promptSnippet: "graphite_change: create | amend | amend_into | absorb | fold",
     promptGuidelines: [
-      "Use graphite_change action=create to start a new PR branch on top of the current branch. Always provide `message`.",
-      "Use graphite_change action=amend to update the current PR's commit. Always provide `message`.",
-      "Run graphite_status first to confirm you are on the intended branch.",
-      "Do not run `gt create`, `gt modify`, or `gt submit` from bash; use graphite_change and graphite_submit, which add confirmations and stay non-interactive.",
-      "graphite_change create/amend/amend_into/absorb include tracked modifications via --all. Fold only combines committed branch histories; it does not stage working-tree changes or squash commits.",
-      "Use graphite_change action=fold to fold the current branch into its non-trunk parent. First review apply:false, then use apply:true and confirmDestructive:true. Default deletes the current branch; keep:true deletes the parent instead and retains the current branch name. Descendants, including other branches stacked on the parent, are restacked.",
-      "If graphite_change fold halts on a conflict, resolve files then use graphite_recover action=continue (or abort). Run graphite_status after folding before further changes or submit.",
+      "Use graphite_change / graphite_submit instead of running `gt create`, `gt modify`, or `gt submit` in bash.",
     ],
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
@@ -51,50 +44,21 @@ export function registerChange(pi: ExtensionAPI) {
         "fold",
       ] as const),
       message: Type.Optional(
-        Type.String({
-          description:
-            "Commit message. Required for create/amend/amend_into.",
-        }),
+        Type.String({ description: "Required for create/amend/amend_into." }),
       ),
-      name: Type.Optional(
-        Type.String({
-          description: "action=create: branch name (default generated from message).",
-        }),
-      ),
+      name: Type.Optional(Type.String({ description: "create: branch name." })),
       insert: Type.Optional(
-        Type.Boolean({
-          description:
-            "action=create: insert between current branch and its child, rebasing children (--insert).",
-        }),
+        Type.Boolean({ description: "create: insert between current branch and its child." }),
       ),
       includeUntracked: Type.Optional(
-        Type.Boolean({
-          description:
-            "action=create|amend|amend_into: include untracked files (--update). Default false; staged + tracked-modified are always included via --all.",
-        }),
+        Type.Boolean({ description: "Also stage untracked files." }),
       ),
-      into: Type.Optional(
-        Type.String({
-          description: "action=amend_into: target downstack branch to amend into.",
-        }),
-      ),
-      apply: Type.Optional(
-        Type.Boolean({
-          description:
-            "action=absorb: false (default) => --dry-run; true => --force. action=fold: false (default) => read-only plan; true => fold (requires confirmDestructive).",
-        }),
-      ),
+      into: Type.Optional(Type.String({ description: "amend_into: target branch." })),
+      apply: Type.Optional(Type.Boolean({ description: "absorb/fold: execute." })),
       keep: Type.Optional(
-        Type.Boolean({
-          description:
-            "action=fold: keep the current branch name and delete its parent instead (--keep). Default false keeps the parent's name and deletes the current branch.",
-        }),
+        Type.Boolean({ description: "fold: keep current branch name; delete the parent instead." }),
       ),
-      confirmDestructive: Type.Optional(
-        Type.Boolean({
-          description: "action=fold: required true with apply:true; folding deletes a branch and restacks descendants.",
-        }),
-      ),
+      confirmDestructive: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {
       let args: string[];

@@ -82,33 +82,21 @@ export function registerRecover(pi: ExtensionAPI) {
     name: "graphite_recover",
     label: "Graphite: recover",
     description:
-      "Recover or repair Graphite stack state: continue (resume a paused gt command after resolving conflicts), abort (cancel the in-flight operation), undo (revert the most recent gt mutation in this worktree), or restack (rebase the current stack so each branch sits on its parent's latest commit). Always prefer this over `git rebase --continue`.",
-    promptSnippet:
-      "graphite_recover: continue / abort / undo / restack — never use `git rebase --continue`",
+      "Resume (continue), cancel (abort), or undo the last gt operation in this worktree, or restack the current stack onto updated parents.",
+    promptSnippet: "graphite_recover: continue | abort | undo | restack",
     promptGuidelines: [
-      "After resolving a rebase or cherry-pick conflict from a gt command, call graphite_recover action=continue (not `git rebase --continue`) so Graphite propagates the fix to dependent branches.",
-      "graphite_recover action=undo only undoes commands run from the current worktree.",
-      "Use graphite_recover action=restack when graphite_status reports branches out of date with their parent but no remote pull is needed; use graphite_sync when trunk itself may have moved.",
+      "After resolving conflicts from a gt operation, use graphite_recover action=continue, never `git rebase --continue`.",
     ],
     outputSchema: GRAPHITE_OUTPUT_SCHEMA,
     parameters: Type.Object({
       cwd: CwdParam,
       action: StringEnum(["continue", "abort", "undo", "restack"] as const),
-      stageAll: Type.Optional(
-        Type.Boolean({
-          description: "action=continue: stage all changes first (--all).",
-        }),
-      ),
+      stageAll: Type.Optional(Type.Boolean({ description: "continue: stage all first." })),
       allowConflictMarkers: Type.Optional(
-        Type.Boolean({
-          description:
-            "action=continue: bypass the pre-flight check that refuses to continue when tracked files still contain `<<<<<<<` markers. Default false.",
-        }),
+        Type.Boolean({ description: "continue: skip the conflict-marker check." }),
       ),
       force: Type.Optional(
-        Type.Boolean({
-          description: "action=abort|undo: skip confirmation (--force).",
-        }),
+        Type.Boolean({ description: "abort/undo: skip confirmation." }),
       ),
     }),
     async execute(_id, p, signal): Promise<ToolReturn> {
